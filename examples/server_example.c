@@ -17,6 +17,8 @@ void indexHandler(void) {
 }
 
 int main(int argc, char* argv[]) {
+    CoapServer.useDriver(TRANSPORT_UDP, GCOAP_DRIVER);
+    CoapServer.useDriver(TRANSPORT_TCP, LIBCOAP_DRIVER);
     CoapServer.registerResource("/", METHOD_GET | METHOD_POST, TRANSPORT_UDP | TRANSPORT_TCP, ";ct=0;rt=\"count\";obs", &indexHandler);
     CoapServer.start();
 

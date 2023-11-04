@@ -9,19 +9,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define METHOD_GET 1
-#define METHOD_POST 1 << 1
-#define METHOD_PUT 1 << 2
-#define METHOD_DELETE 1 << 3
 
-#define METHOD_ALLOWED(a, b) ((a & b) != 0)
-
-#define TRANSPORT_UDP 1
-#define TRANSPORT_DTLS 1 << 1
-#define TRANSPORT_TCP 1 << 2
-#define TRANSPORT_TLS 1 << 3
-
-#define TRANSPORT_ALLOWED(a, b) ((a & b) != 0)
 
 typedef void (*ResourceHandler)(void);
 
