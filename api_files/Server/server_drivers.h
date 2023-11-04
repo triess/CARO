@@ -15,9 +15,6 @@ typedef struct SERVER_DRIVER {
     void (*registerRuntimeResource)(struct SERVER_DRIVER);
 }SERVER_DRIVER;
 
-typedef enum TRANSPORT{
-    UDP,UDPS,TCP,TCPS,WS,BLE,OSCORE
-}TRANSPORT;
 
 void initWhatever() {
     printf("Hello World\n");
