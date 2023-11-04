@@ -1,0 +1,11 @@
+@startuml
+
+package "CoAPI"{
+    [API_Entry]
+    API_gcoap -up- [API_Entry]:UDP
+    API_LibCoAP -up- [API_Entry]:TCP
+}
+
+API_LibCoAP -down-> LibCoAP: Callback
+API_gcoap -down-> gcoap: Callback
+@enduml
