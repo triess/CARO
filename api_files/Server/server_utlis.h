@@ -5,6 +5,9 @@
 #ifndef COAPI_SERVER_UTLIS_H
 #define COAPI_SERVER_UTLIS_H
 
-typedef void (*resource_handler_t)(void);
+#include "../request.h"
+#include "../response.h"
+
+typedef response_t* (*resource_handler_t)(request_t*);
 
 #endif //COAPI_SERVER_UTLIS_H

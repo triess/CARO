@@ -6,28 +6,18 @@
 #define COAPI_DRIVERS_H
 
 #include <stdio.h>
-#include "request.h"
+#include "../request.h"
 
-typedef struct CLIENT_DRIVER {
-    REQUEST (*initRequest)(struct CLIENT_DRIVER,char*);
+typedef struct client_driver_t {
+    request_t (*initRequest)(struct client_driver_t,char*);
     void (*addOption)(void);
     void (*setPayload)(void);
     void (*sendRequest)(void);
-}CLIENT_DRIVER;
+}client_driver_t;
 
-typedef enum TRANSPORT{
-    UDP,UDPS,TCP,TCPS,WS,BLE,OSCORE
-}TRANSPORT;
 
 void initWhatever() {
     printf("Hello World\n");
 }
 
 #endif //COAPI_DRIVERS_H
-#define GCOAP
-#ifdef GCOAP
-#include "Client/gcoap/gcoap_handler.h"
-struct CLIENT_DRIVER GCOAP_DRIVER = {
-        .initRequest = null
-};
-#endif

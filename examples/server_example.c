@@ -6,17 +6,19 @@
 #include "../api_files/Server/gcoap/gcoap_driver.h"
 #include "../api_files/Server/server.h"
 
-void indexHandler(void) {
+response_t* indexHandler(request_t*) {
     printf("Hello World\n");
+    return NULL;
 }
 
 int main(int argc, char* argv[]) {
     coap_server_t server;
     coap_server_use_driver(&server, UDP, gcoap_driver);
-    coap_server_register_resource(&server, "/", GET | POST, UDP | TCP, ";ct=0;rt=\"count\";obs", &indexHandler);
+    coap_server_register_resource(&server, "/", GET | POST,
+                                  UDP | TCP, ";ct=0;rt=\"count\";obs", &indexHandler);
     coap_server_start(&server);
 
 
     // THIS IS DEBUGGING STUFF
-    coap_server_debug_receive_request(&server, "/", GET, TCPS);
+    coap_server_debug_receive_request(&server, "/", GET, TCP);
 }
