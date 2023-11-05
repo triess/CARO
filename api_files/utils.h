@@ -16,8 +16,10 @@ typedef enum {
     WS = 1 << 4,
     BLE = 1 << 5,
     OSCORE = 1 << 6,
-    SLIPMUX = 1 << 7
+    SLIPMUX = 1 << 7,
 } transport_t; // TODO: add prefix to name
+
+#define TRANSPORT_NUM_OF 8
 
 typedef uint8_t transports_selector_t;
 

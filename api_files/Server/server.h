@@ -27,10 +27,11 @@ typedef struct {
 #define NUM_RESOURCES 10
 
 typedef struct {
+    server_driver_t* drivers[TRANSPORT_NUM_OF];
     coap_resource_t resource_pool[NUM_RESOURCES]; // TODO: memory management
 } coap_server_t;
 
-void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_t driver);
+void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_t* driver);
 void coap_server_register_resource(coap_server_t* server, char* path, methods_selector_t methods,
                                    transports_selector_t  transports, char* rt,
                                    resource_handler_t handler);

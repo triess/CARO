@@ -13,7 +13,7 @@ response_t* index_handler(request_t* request) {
 
 int main(int argc, char* argv[]) {
     coap_server_t server;
-    coap_server_use_driver(&server, UDP, gcoap_driver);
+    coap_server_use_driver(&server, UDP, &gcoap_driver);
     coap_server_register_resource(&server, "/", GET | POST, UDP | TCP,
                                   ";ct=0;rt=\"count\";obs", &index_handler);
     coap_server_start(&server);
