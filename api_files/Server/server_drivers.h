@@ -8,8 +8,6 @@
 #include <stdio.h>
 #include "server_utils.h"
 #include "../utils.h"
-#include "../response.h"
-
 
 typedef struct server_driver_t {
     void (*start_server)(struct server_driver_t*);

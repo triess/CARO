@@ -1,7 +1,7 @@
 CXX = gcc
 CXXFLAGS = -I$(INCLUDES)
-TARGET = example
-SRCS = ../api_files/Server/server.c server_example.c
+TARGET = server_example
+SRCS = ../api_files/Server/server.c ../api_files/Server/gcoap/gcoap_driver.c server_example.c
 OBJS = $(SRCS:.c=.o)
 INCLUDES = .
 
@@ -9,8 +9,8 @@ INCLUDES = .
 
 all: $(TARGET)
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-$(OBJS): $(SRCS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+.c.o:
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 clean:
 	$(RM) $(OBJS) $(TARGET)

@@ -4,7 +4,7 @@
 #include "server.h"
 
 void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_t driver) {
-    printf("Debug");
+    printf("Debug\n");
     // TODO: map server to transport
 }
 
@@ -48,6 +48,7 @@ void coap_server_debug_receive_request(coap_server_t* server, char* path, method
                 // found a fitting handler
                 r.handler(NULL);
             }
+            break;
         }
     }
 }

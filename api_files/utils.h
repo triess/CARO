@@ -43,7 +43,7 @@ typedef enum selected_implementations {
     NUM_OF
 } selected_implementations;
 
-const int available_transport[NUM_OF] = {
+static const int available_transport[NUM_OF] = {
 #ifdef COAPI_USE_GCOAP
     TRANSPORT.UDP | TRANSPORT.UDPS,
 #endif

@@ -18,10 +18,9 @@ int main(int argc, char* argv[]) {
                                   ";ct=0;rt=\"count\";obs", &index_handler);
     coap_server_start(&server);
 
+
+    coap_server_debug_receive_request(&server, "/", GET, TCP);
+
     return 0;
 }
-
-
-// THIS IS DEBUGGING STUFF
-// coap_server_debug_receive_request(&server, "/", GET, TCP);
 
