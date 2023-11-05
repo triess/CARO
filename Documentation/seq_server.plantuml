@@ -1,0 +1,12 @@
+@startuml
+
+Application -> CoAPI: register_resource(\npath, allowedMethods, allowedTransports,\nlinkParams, handler)
+
+Application -> CoAPI: start_server(driver="GCOAP")
+
+CoAPI -> GCOAP_Handler: start_server(resource_pool)
+
+GCOAP_Handler -> GCOAP_Handler: startServer(resourcePool)
+
+
+@enduml

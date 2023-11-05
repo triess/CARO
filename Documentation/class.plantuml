@@ -1,0 +1,39 @@
+@startuml
+
+struct Request{
+    DRIVER
+    Transport
+}
+
+
+class CoAPI_server{
+.. initialize server ..
+    void initServer(DRIVER)
+    
+
+.. resource handling ..
+    void addResource()
+    void removeResource() 
+
+.. make_Request ..
+    initRequest(uri, DRIVER)
+    void addOption()
+    void addPayload()
+    
+--
+
+.. Drivers..
+
+struct gcoap_driver
+
+
+    
+}
+
+class libCoAP_handler{
+
+}
+
+CoAPI::initRequest --> libCoAP_handler
+
+@enduml

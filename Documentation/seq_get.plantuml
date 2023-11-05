@@ -1,7 +1,10 @@
 @startuml
-Application -> CoAPI: send_message\n(dest="0.10.22.3", transport="", code="GET", options="", payload="/.well_known")
+
+Application -> CoAPI: send_message\n(URI="coap+tcp://10.10.22.3",\ncode="GET", options="", payload="", \npath="/.well_known")
+activate CoAPI
 CoAPI -> CoAPI: parsing transport, options, ...
 CoAPI -> gcoap_handler: payload, options "in gcoap format"
+deactivate CoAPI
 activate gcoap_handler
 gcoap_handler -> gcoap_handler: composes header, options, payload
 create server
@@ -9,6 +12,6 @@ gcoap_handler -> server: sends message
 server -> gcoap_handler: response
 gcoap_handler -> CoAPI: response "in gcoap format"
 deactivate gcoap_handler
-CoAPI -> Application: response[status = successful, response="......."]
+CoAPI -> Application: response[status = successful, payload="......."]
 
 @enduml
