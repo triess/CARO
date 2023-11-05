@@ -3,8 +3,8 @@
 //
 
 #include <stdio.h>
-#include "../api_files/Server/gcoap/gcoap_driver.h"
 #include "../api_files/Server/server.h"
+#include "../api_files/Server/gcoap/gcoap_driver.h"
 
 response_t* index_handler(request_t* request) {
     printf("Hello World\n");
@@ -22,7 +22,6 @@ int main(int argc, char* argv[]) {
 }
 
 
-
-
 // THIS IS DEBUGGING STUFF
 // coap_server_debug_receive_request(&server, "/", GET, TCP);
+

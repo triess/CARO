@@ -4,6 +4,7 @@
 #include "server.h"
 
 void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_t driver) {
+    printf("Debug");
     // TODO: map server to transport
 }
 

@@ -6,12 +6,13 @@
 #define SERVER_DRIVERS_H
 
 #include <stdio.h>
+#include "server_utils.h"
 #include "../utils.h"
-#include "server_utlis.h"
+#include "../response.h"
+
 
 typedef struct server_driver_t {
-    void (*start_server)(struct server_driver_t);
-    void (*register_resource)(struct server_driver_t, methods_selector_t,char*,resource_handler_t);
+    void (*start_server)(struct server_driver_t*);
+    void (*register_resource)(struct server_driver_t*, methods_selector_t,char*,resource_handler_t);
 } server_driver_t;
-
 #endif //SERVER_DRIVERS_H

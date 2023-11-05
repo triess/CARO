@@ -9,9 +9,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "../utils.h"
-#include "server_utlis.h"
+#include "server_utils.h"
 #include "server_drivers.h"
+#include "../utils.h"
 #include "../request.h"
 #include "../response.h"
 
