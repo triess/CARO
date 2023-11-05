@@ -4,7 +4,6 @@
 
 #include "gcoap_driver.h"
 
-
 void gcoap_start_server(struct server_driver_t sd){
     printf("backend call: starting gcoap server"); //TODO
     

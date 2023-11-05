@@ -12,15 +12,15 @@ void coap_server_register_resource(coap_server_t* server, char* path, methods_se
     printf("Register Resource\n");
 
     for (int i = 0; i < NUM_RESOURCES; i++) {
-        coap_resource_t* r = &server->resourcePool[i];
-        if (!r->isValid) {
+        coap_resource_t* r = &server->resource_pool[i];
+        if (!r->is_valid) {
             // found an unused resource place
             r->path = path;
-            r->allowedMethods = methods;
-            r->allowedTransports = transports;
-            r->linkParams = rt;
+            r->allowed_methods = methods;
+            r->allowed_transports = transports;
+            r->link_params = rt;
             r->handler = handler;
-            r->isValid = true;
+            r->is_valid = true;
             return;
         }
     }
@@ -37,11 +37,11 @@ void coap_server_debug_receive_request(coap_server_t* server, char* path, method
     printf("Received Request: %s, %d\n", path, m);
 
     for (int i = 0; i < NUM_RESOURCES; i++) {
-        coap_resource_t r = server->resourcePool[i];
-        if (r.isValid && strcmp(path, r.path) == 0) {
-            if (!is_transport_allowed(r.allowedTransports, t)) {
+        coap_resource_t r = server->resource_pool[i];
+        if (r.is_valid && strcmp(path, r.path) == 0) {
+            if (!is_transport_allowed(r.allowed_transports, t)) {
                 printf("TRANSPORT %d NOT ALLOWED", t);
-            } else if (!is_method_allowed(r.allowedMethods, m)) {
+            } else if (!is_method_allowed(r.allowed_methods, m)) {
                 printf("METHOD %d NOT ALLOWED", m);
             } else {
                 // found a fitting handler
