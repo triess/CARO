@@ -5,7 +5,6 @@
 #define REQUEST_H
 
 #include <stdint.h>
-#include "Server/server_drivers.h"
 
 typedef struct request_t{
 //    client_driver_t driver; // TODO
