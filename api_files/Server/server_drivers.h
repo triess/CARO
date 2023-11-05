@@ -9,14 +9,9 @@
 #include "../utils.h"
 #include "server_utlis.h"
 
-typedef struct SERVER_DRIVER {
-    void (*startServer)(struct SERVER_DRIVER);
-    void (*registerRuntimeResource)(struct SERVER_DRIVER);
-}SERVER_DRIVER;
-
-
-void initWhatever() {
-    printf("Hello World\n");
-}
+typedef struct server_driver_t {
+    void (*start_server)(struct server_driver_t);
+    void (*register_resource)(struct server_driver_t, methods_selector_t,char*,resource_handler_t);
+} server_driver_t;
 
 #endif //SERVER_DRIVERS_H

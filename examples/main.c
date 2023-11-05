@@ -5,6 +5,6 @@
 #include "../api_files/Server/server_drivers.h"
 
 int main(int argc, char* argv[]) {
-    GCOAP_DRIVER.initRequest();
+
     return 1;
 }
