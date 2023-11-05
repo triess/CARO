@@ -9,26 +9,20 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "../utils.h"
+#include "server_utlis.h"
+#include "server_drivers.h"
 
+#define NUM_RESOURCES 10
 
-typedef void (*ResourceHandler)(void);
-
-struct CoapServer_t {
-    void (*registerResource)(char*, char, char, char*, ResourceHandler);
-    void (*start)(void);
-
-    // TODO: delete
-    void (*debugReceiveRequest)(char*, char, char);
-};
-
-struct Resource {
+typedef struct {
     char* path;
     char allowedMethods;
     char allowedTransports;
     char* linkParams;
-    ResourceHandler handler;
+    resource_handler_t handler;
     bool isValid;
-};
+} coap_resource_t;
 
 typedef struct {
     coap_resource_t resourcePool[NUM_RESOURCES]; // TODO: change

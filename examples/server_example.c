@@ -1,31 +1,22 @@
 //
 // Created by sommer on 04.11.23.
 //
-
-#include "../api_files/Server/server.h"
-
 #include <stdio.h>
 
-/*
-CoapResponse indexHandler(CoapRequest req) {
-    return createTextResponse("This is the index");
-}
- */
+#include "../api_files/Server/gcoap/gcoap_driver.h"
+#include "../api_files/Server/server.h"
 
 void indexHandler(void) {
     printf("Hello World\n");
 }
 
 int main(int argc, char* argv[]) {
-    CoapServer.useDriver(TRANSPORT_UDP, GCOAP_DRIVER);
-    CoapServer.useDriver(TRANSPORT_TCP, LIBCOAP_DRIVER);
-    CoapServer.registerResource("/", METHOD_GET | METHOD_POST, TRANSPORT_UDP | TRANSPORT_TCP, ";ct=0;rt=\"count\";obs", &indexHandler);
-    CoapServer.start();
-
-    // resource type (attribute)
-    //
+    coap_server_t server;
+    coap_server_use_driver(&server, UDP, gcoap_driver);
+    coap_server_register_resource(&server, "/", GET | POST, UDP | TCP, ";ct=0;rt=\"count\";obs", &indexHandler);
+    coap_server_start(&server);
 
 
     // THIS IS DEBUGGING STUFF
-    CoapServer.debugReceiveRequest("/", METHOD_GET, TRANSPORT_TLS);
+    coap_server_debug_receive_request(&server, "/", GET, TCPS);
 }

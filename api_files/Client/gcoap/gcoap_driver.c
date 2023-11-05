@@ -4,5 +4,3 @@
 #include "gcoap_driver.h"
 
 
-#endif //COAPI_GCOAP_HANDLER_C
-
