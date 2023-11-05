@@ -30,58 +30,15 @@ struct Resource {
     bool isValid;
 };
 
-#define NUM_RESOURCES 10
-struct Resource resourcePool[NUM_RESOURCES]; // TODO: change
+typedef struct {
+    coap_resource_t resourcePool[NUM_RESOURCES]; // TODO: change
+} coap_server_t;
 
-void coap_register_resource(char* path, char allowedMethods, char allowedTransports, char* linkParams, ResourceHandler handler) {
-    printf("Register Resource\n");
+void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_t driver);
+void coap_server_register_resource(coap_server_t* server, char* path, methods_selector_t methods,
+                                   transports_selector_t  transports, char* rt, resource_handler_t handler);
+void coap_server_start(coap_server_t* server);
 
-    for (int i = 0; i < NUM_RESOURCES; i++) {
-        struct Resource* r = &resourcePool[i];
-        if (!r->isValid) {
-            // found an unused resource place
-            r->path = path;
-            r->allowedMethods = allowedMethods;
-            r->allowedTransports = allowedTransports;
-            r->linkParams = linkParams;
-            r->handler = handler;
-            r->isValid = true;
-            return;
-        }
-    }
-
-    // no place for a new resource found
-    // TODO: fail
-}
-
-void coap_start_server() {
-    printf("Start Server\n");
-}
-
-void coap_debug_receive_request(char* path, char method, char transport) {
-    printf("Received Request: %s, %d\n", path, method);
-
-    for (int i = 0; i < NUM_RESOURCES; i++) {
-        struct Resource r = resourcePool[i];
-        if (r.isValid && strcmp(path, r.path) == 0) {
-            if (!TRANSPORT_ALLOWED(r.allowedTransports, transport)) {
-                printf("TRANSPORT %d NOT ALLOWED", transport);
-            } else if (!METHOD_ALLOWED(r.allowedMethods, method)) {
-                printf("METHOD %d NOT ALLOWED", method);
-            } else {
-                // found a fitting handler
-                r.handler();
-            }
-        }
-    }
-}
-
-struct CoapServer_t CoapServer = {
-        .registerResource = &coap_register_resource,
-        .start = &coap_start_server,
-
-        // TODO: delete
-        .debugReceiveRequest = &coap_debug_receive_request
-};
+void coap_server_debug_receive_request(coap_server_t* server, char* path, method_t m, transport_t t);
 
 #endif //COAPI_SERVER_H
