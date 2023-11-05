@@ -25,4 +25,5 @@ int main(int argc, char* argv[]) {
 
     // THIS IS DEBUGGING STUFF
     coap_server_debug_receive_request(&server, "/", GET, TCP);
+    return 0;
 }
