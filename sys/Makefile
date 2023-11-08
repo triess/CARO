@@ -11,6 +11,9 @@ endif
 ifneq (,$(filter bluetil_%,$(USEMODULE)))
   DIRS += net/ble/bluetil
 endif
+ifneq (,$(filter caro,$(USEMODULE)))
+  DIRS += net/application_layer/caro
+endif
 ifneq (,$(filter cipher_modes,$(USEMODULE)))
   DIRS += crypto/modes
 endif
