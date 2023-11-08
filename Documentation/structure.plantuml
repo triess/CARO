@@ -4,13 +4,18 @@ package "Application Layer"{
 }
 
 package "CoAPI"{
-    [API_Entry]
-    gcoap_handler -up- [API_Entry]:useTransport = UDP
-    LibCoAP_handler -up- [API_Entry]:useTransport = TCP
+    [API_Server]
+
+    package "drivers"{
+        [gcoap_handler]
+        [LibCoAP_handler]
+    }
+    gcoap_handler -up- [API_Server]:useTransport = UDP
+    LibCoAP_handler -up- [API_Server]:useTransport = TCP
 }
 
 LibCoAP_handler -down-> LibCoAP: Callback
 gcoap_handler -down-> gcoap: Callback
 
-Application -down-> API_Entry
+Application -down-> API_Server
 @enduml
