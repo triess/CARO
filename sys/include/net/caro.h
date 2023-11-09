@@ -129,13 +129,13 @@ typedef struct {
     char* link_params;
     resource_handler_t handler;
     bool is_valid;
-} coap_resource_t;
+} caro_coap_resource_t;
 
 #define NUM_OF_RESOURCES 10
 
 typedef struct {
     server_driver_t* drivers[NUM_OF_TRANSPORTS];
-    coap_resource_t resource_pool[NUM_OF_RESOURCES]; // TODO: memory management
+    caro_coap_resource_t resource_pool[NUM_OF_RESOURCES]; // TODO: memory management
 } coap_server_t;
 
 void coap_server_init(coap_server_t* server);
