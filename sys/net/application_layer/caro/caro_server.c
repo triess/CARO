@@ -41,11 +41,14 @@ int transport_to_index(transport_t t) {
 }
 
 
-void coap_server_init(coap_server_t* server) {
+caro_resource_t resource_pool[NUM_OF_RESOURCES]; // TODO: memory management
+
+
+void caro_server_init(caro_server_t* server) {
     memset(server, 0, sizeof(*server));
 }
 
-void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_t* driver) {
+void caro_server_use_driver(caro_server_t* server, transport_t t, server_driver_t* driver) {
     printf("Debug\n");
     // TODO: map server to transport
     int transport_index = transport_to_index(t);
@@ -53,12 +56,13 @@ void coap_server_use_driver(coap_server_t* server, transport_t t, server_driver_
     server->drivers[transport_index] = driver;
 }
 
-void coap_server_register_resource(coap_server_t* server, char* path, methods_selector_t methods,
-                                   transports_selector_t  transports, char* rt, resource_handler_t handler) {
+// user visible function
+void caro_server_register_resource(caro_server_t* server, char* path, methods_selector_t methods,
+                                   transports_selector_t  transports, char* rt, caro_resource_handler_t handler) {
     printf("Register Resource\n");
 
     for (int i = 0; i < NUM_OF_RESOURCES; i++) {
-        caro_coap_resource_t* r = &server->resource_pool[i];
+        caro_resource_t* r = &resource_pool[i];
         if (!r->is_valid) {
             // found an unused resource place
             r->path = path;
@@ -66,6 +70,7 @@ void coap_server_register_resource(coap_server_t* server, char* path, methods_se
             r->allowed_transports = transports;
             r->link_params = rt;
             r->handler = handler;
+            r->server = server;
             r->is_valid = true;
 
             return;
@@ -76,11 +81,12 @@ void coap_server_register_resource(coap_server_t* server, char* path, methods_se
     // TODO: fail
 }
 
-void coap_server_start(coap_server_t* server) {
+// user visible function
+void caro_server_start(caro_server_t* server) {
     printf("Start Server\n");
 
     for (int i = 0; i < NUM_OF_RESOURCES; i++) {
-        caro_coap_resource_t resource = server->resource_pool[i];
+        caro_resource_t resource = resource_pool[i];
         if (!resource.is_valid) continue;
 
         for (int j = 0; j < NUM_OF_TRANSPORTS; j++) {
@@ -98,11 +104,13 @@ void coap_server_start(coap_server_t* server) {
     }
 }
 
-void coap_server_debug_receive_request(coap_server_t* server, char* path, method_t m, transport_t t) {
-    printf("Received Request: %s, %d\n", path, m);
+// user visible function for now TODO
+void caro_server_debug_receive_request(caro_server_t* server, char* path, method_t m, transport_t t) {
+    (void)server;
 
+    printf("Received Request: %s, %d\n", path, m);
     for (int i = 0; i < NUM_OF_RESOURCES; i++) {
-        caro_coap_resource_t r = server->resource_pool[i];
+        caro_resource_t r = resource_pool[i];
         if (r.is_valid && strcmp(path, r.path) == 0) {
             if (!is_transport_allowed(r.allowed_transports, t)) {
                 printf("TRANSPORT %d NOT ALLOWED", t);
@@ -110,7 +118,11 @@ void coap_server_debug_receive_request(coap_server_t* server, char* path, method
                 printf("METHOD %d NOT ALLOWED", m);
             } else {
                 // found a fitting handler
-                r.handler(NULL);
+
+                /*
+                caro_request_t request;
+                r.handler(&request);
+                 */
             }
             break;
         }
@@ -157,12 +169,57 @@ static gcoap_listener_t _listener = {
         NULL
 };
 
-static ssize_t _debug_handler(coap_pkt_t* pdu, uint8_t *buf, size_t len, coap_request_ctx_t *ctx)
+
+void _convert_gcoap_pkt_to_request(coap_pkt_t* pkt, caro_request_t* request,const char* path, method_t m, transport_t t){
+    request->path = path;
+    request->method = m;
+    request->transport = t;
+    request->ver_t_tkl = pkt->hdr->ver_t_tkl;
+    request->id = pkt->hdr->id;
+    for (int i = 0; i < pkt->options_len; i++) {
+        coap_optpos_t opt = pkt->options[i];
+
+        caro_message_option_t caro_opt;
+        caro_opt.opt_num = opt.opt_num;
+
+        coap_opt_get_uint(pkt, opt.opt_num, &caro_opt.int_value);
+        // coap_opt_get_string(pkt, opt.opt_num, (uint8_t*)caro_opt.str_value, 255, '\0');
+
+        request->options[i] = caro_opt;
+    }
+    request->options_len = pkt->options_len;
+    request->payload = pkt->payload;
+    request->payload_len = pkt->payload_len;
+}
+
+static ssize_t _gcoap_universal_udp_handler(coap_pkt_t* pdu, uint8_t *buf, size_t len, coap_request_ctx_t *ctx)
 {
     (void)pdu;
     (void)buf;
     (void)len;
-    (void)ctx;
+
+    method_t method = coap_method2flag(coap_get_code_detail(pdu));
+
+    printf("Method: %d\n", method);
+
+    for (int i = 0; i < NUM_OF_RESOURCES; i++) {
+        caro_resource_t r = resource_pool[i];
+        if (!r.is_valid) continue;
+
+        if (strcmp(r.path, ctx->resource->path) == 0 &&
+            is_method_allowed(r.allowed_methods, method) &&
+            is_transport_allowed(r.allowed_transports, UDP)) { // TODO: also compare the method
+            printf("We found the corresponding handler!\n");
+
+            caro_request_t request;
+            //printf("TEST1: %p\n", (void*)&request);
+            _convert_gcoap_pkt_to_request(pdu, &request, ctx->resource->path, method, UDP);
+            //printf("TEST2: %p\n", (void*)&request);
+            r.handler(&request);
+        } else {
+            printf("We did not find the corresponding handler!\n");
+        }
+    }
 
     printf("OUR GCOAP DEBUG HANDLER WAS CALLED\n");
     return 0;
@@ -170,19 +227,17 @@ static ssize_t _debug_handler(coap_pkt_t* pdu, uint8_t *buf, size_t len, coap_re
 
 static bool is_added = false;
 
-void gcoap_start_server(struct server_driver_t* sd){
+void _gcoap_start_server(struct server_driver_t* sd){
     (void)sd;
     printf("backend call: starting gcoap server\n"); //TODO
 }
 
-void gcoap_register_resource(struct server_driver_t* sd, methods_selector_t ms, char* path, resource_handler_t rh) {
+void _gcoap_register_resource(struct server_driver_t* sd, methods_selector_t ms, char* path, caro_resource_handler_t rh) {
     (void)sd;
-    (void)ms;
-    (void)path;
     (void)rh;
     printf("backend call: register resource gcoap to path: %s\n",path); //TODO
 
-    coap_resource_t resource = { path, COAP_GET, &_debug_handler, NULL }; // TODO: add handler
+    coap_resource_t resource = { path, ms, &_gcoap_universal_udp_handler, NULL };
     _resources[_listener.resources_len] = resource;
     _listener.resources_len = _listener.resources_len + 1;
 
@@ -192,7 +247,37 @@ void gcoap_register_resource(struct server_driver_t* sd, methods_selector_t ms, 
     }
 }
 
+void _gcoap_initialize_response(struct server_driver_t* sd, response_t* response) {
+    (void)sd;
+    (void)response;
+    printf("initialize response\n");
+}
+
+void _gcoap_add_str_option(struct server_driver_t* sd, uint16_t opt_num, char* opt_val) {
+    (void)sd;
+    (void)opt_num;
+    (void)opt_val;
+    printf("add string option\n");
+}
+
+void _gcoap_add_int_option(struct server_driver_t* sd, uint16_t opt_num, uint32_t opt_val) {
+    (void)sd;
+    (void)opt_num;
+    (void)opt_val;
+    printf("add int option\n");
+}
+
+void _gcoap_add_payload(struct server_driver_t* sd, uint8_t * payload) {
+    (void)sd;
+    (void)payload;
+    printf("add payload\n");
+}
+
 server_driver_t gcoap_driver = {
-        .start_server = &gcoap_start_server,
-        .register_resource = &gcoap_register_resource
+        .start_server = &_gcoap_start_server,
+        .register_resource = &_gcoap_register_resource,
+        .initialize_response = &_gcoap_initialize_response,
+        .add_str_option = &_gcoap_add_str_option,
+        .add_int_option = &_gcoap_add_int_option,
+        .add_payload = &_gcoap_add_payload
 };

@@ -32,9 +32,13 @@
 
 
 
-response_t* index_handler(request_t* request) {
-    (void)request;
-    printf("Hello World\n");
+response_t* index_handler(caro_request_t* request) {
+    printf("** HIER KÖNNTE IHR USER CODE STEHEN **\n");
+    printf("Request:\n\tPath: %s\n\tMethod: %d\n\tTransport: %d\n", request->path, request->method, request->transport);
+    for (int i = 0; i < request->options_len; i++) {
+        caro_message_option_t opt = request->options[i];
+        printf("Options #%d: %u\n", opt.opt_num, opt.int_value);
+    }
     return NULL;
 }
 
@@ -72,15 +76,15 @@ int caro_cli_cmd(int argc, char* argv[]) {
 
     DEBUG("DEBUG\n");
 
-    coap_server_t server;
-    coap_server_init(&server);
-    coap_server_use_driver(&server, UDP, &gcoap_driver);
-    coap_server_register_resource(&server, "/", GET | POST, UDP | TCP,
+    caro_server_t server;
+    caro_server_init(&server);
+    caro_server_use_driver(&server, UDP, &gcoap_driver);
+    caro_server_register_resource(&server, "/", GET | POST, UDP | TCP,
                                   ";ct=0;rt=\"count\";obs", &index_handler);
-    coap_server_start(&server);
+    caro_server_start(&server);
 
 
-    coap_server_debug_receive_request(&server, "/", GET, TCP);
+    caro_server_debug_receive_request(&server, "/", GET, TCP);
 
     return 0;
 }

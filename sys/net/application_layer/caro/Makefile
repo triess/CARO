@@ -1,4 +1,4 @@
-SRC := caro.c
+SRC := caro_server.c
 
 SUBMODULES := 1
 
