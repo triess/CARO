@@ -179,15 +179,14 @@ void _convert_gcoap_pkt_to_request(coap_pkt_t* pkt, caro_request_t* request,cons
     for (int i = 0; i < pkt->options_len; i++) {
         coap_optpos_t opt = pkt->options[i];
 
-        caro_message_option_t caro_opt;
-        caro_opt.opt_num = opt.opt_num;
+        request->options[i].opt_num = opt.opt_num;
+        coap_opt_get_uint(pkt, opt.opt_num, &request->options[i].int_value);
+        coap_opt_get_string(pkt, opt.opt_num, (uint8_t*)request->options[i].str_value, 255, '\0');
 
-        coap_opt_get_uint(pkt, opt.opt_num, &caro_opt.int_value);
-        // coap_opt_get_string(pkt, opt.opt_num, (uint8_t*)caro_opt.str_value, 255, '\0');
-
-        request->options[i] = caro_opt;
+        printf("=================\nOption #%d\n", i);
     }
     request->options_len = pkt->options_len;
+
     request->payload = pkt->payload;
     request->payload_len = pkt->payload_len;
 }
@@ -209,6 +208,7 @@ static ssize_t _gcoap_universal_udp_handler(coap_pkt_t* pdu, uint8_t *buf, size_
         if (strcmp(r.path, ctx->resource->path) == 0 &&
             is_method_allowed(r.allowed_methods, method) &&
             is_transport_allowed(r.allowed_transports, UDP)) { // TODO: also compare the method
+
             printf("We found the corresponding handler!\n");
 
             caro_request_t request;
@@ -216,12 +216,14 @@ static ssize_t _gcoap_universal_udp_handler(coap_pkt_t* pdu, uint8_t *buf, size_
             _convert_gcoap_pkt_to_request(pdu, &request, ctx->resource->path, method, UDP);
             //printf("TEST2: %p\n", (void*)&request);
             r.handler(&request);
+
+            break;
         } else {
             printf("We did not find the corresponding handler!\n");
         }
     }
 
-    printf("OUR GCOAP DEBUG HANDLER WAS CALLED\n");
+    // printf("OUR GCOAP DEBUG HANDLER WAS CALLED\n");
     return 0;
 }
 

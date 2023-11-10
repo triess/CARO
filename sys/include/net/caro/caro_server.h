@@ -102,7 +102,7 @@ typedef struct{
     char str_value[255];
 } caro_message_option_t;
 
-#define CARO_MAX_NUM_OF_OPTIONS 100
+#define CARO_MAX_NUM_OF_OPTIONS 10
 
 typedef struct caro_request_t{
     const char* path;

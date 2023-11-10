@@ -37,7 +37,7 @@ response_t* index_handler(caro_request_t* request) {
     printf("Request:\n\tPath: %s\n\tMethod: %d\n\tTransport: %d\n", request->path, request->method, request->transport);
     for (int i = 0; i < request->options_len; i++) {
         caro_message_option_t opt = request->options[i];
-        printf("Options #%d: %u\n", opt.opt_num, opt.int_value);
+        printf("Options #%d: %s %u\n", opt.opt_num, opt.str_value, opt.int_value);
     }
     return NULL;
 }
@@ -54,8 +54,7 @@ int caro_cli_cmd(int argc, char* argv[]) {
     (void)argv;
 
 
-
-    if (strcmp(argv[1], "info") == 0) {
+    if (argc >= 2 && strcmp(argv[1], "info") == 0) {
 
         if (IS_USED(MODULE_GCOAP_DTLS)) {
             printf("CoAP server is listening on port %u\n", CONFIG_GCOAPS_PORT);
@@ -105,6 +104,10 @@ int main(void)
     /* start shell */
     puts("All up, running the shell now");
     char line_buf[SHELL_DEFAULT_BUFSIZE];
+
+
+    caro_cli_cmd(0, NULL);
+
     shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
 
     /* should never be reached */
