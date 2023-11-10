@@ -14,6 +14,8 @@ extern "C" {
 #include "stdint.h"
 #include "stdbool.h"
 
+#include "net/gcoap.h"
+
 /* Declare the API of the module */
 
 #ifdef __cplusplus
@@ -96,24 +98,14 @@ static inline bool is_method_allowed(methods_selector_t ms, method_t m) {
     return (ms & m) != 0;
 }
 
-typedef struct{
-    uint16_t opt_num;
-    uint32_t int_value;
-    char str_value[255];
-} caro_message_option_t;
-
-#define CARO_MAX_NUM_OF_OPTIONS 10
-
-typedef struct caro_request_t{
+typedef struct caro_request_t {
     const char* path;
-    uint8_t ver_t_tkl;
     method_t method;
-    uint16_t id;
     transport_t transport;
-    caro_message_option_t options[CARO_MAX_NUM_OF_OPTIONS];
-    uint16_t options_len;
-    uint8_t* payload;
-    uint16_t payload_len;
+
+    coap_pkt_t* gcoap_req;
+
+    struct server_driver_t* driver;
 } caro_request_t;
 
 typedef struct response_t{
@@ -133,6 +125,11 @@ typedef struct {
 typedef struct server_driver_t {
     void (*start_server)(struct server_driver_t*);
     void (*register_resource)(struct server_driver_t*, methods_selector_t, char*, caro_resource_handler_t);
+    void (*get_request_header_data)(struct server_driver_t*, caro_request_t*, const char**, uint8_t*, uint16_t*, method_t*, transport_t*, uint16_t*, uint16_t*);
+    void (*get_request_opt_num)(struct server_driver_t*, caro_request_t*, uint32_t, uint16_t*);
+    void (*get_request_opt_as_uint)(struct server_driver_t*, caro_request_t*, uint32_t, uint32_t*);
+    void (*get_request_opt_as_str)(struct server_driver_t*, caro_request_t*, uint32_t, char*, size_t max_len);
+    void (*get_request_payload)(struct server_driver_t*, caro_request_t*, const char**);
     void (*initialize_response)(struct server_driver_t*, response_t*);
     void (*add_str_option)(struct server_driver_t*,uint16_t,char*);
     void (*add_int_option)(struct server_driver_t*,uint16_t,uint32_t);

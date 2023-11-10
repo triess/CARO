@@ -34,11 +34,34 @@
 
 response_t* index_handler(caro_request_t* request) {
     printf("** HIER KÖNNTE IHR USER CODE STEHEN **\n");
-    printf("Request:\n\tPath: %s\n\tMethod: %d\n\tTransport: %d\n", request->path, request->method, request->transport);
-    for (int i = 0; i < request->options_len; i++) {
-        caro_message_option_t opt = request->options[i];
-        printf("Options #%d: %s %u\n", opt.opt_num, opt.str_value, opt.int_value);
+
+    const char* path;
+    method_t method;
+    transport_t transport;
+    uint16_t opt_len;
+
+    request->driver->get_request_header_data(request->driver, request, &path, NULL, NULL, &method, &transport, &opt_len, NULL);
+
+    printf("Request:\n\tPath: %s\n\tMethod: %d\n\tTransport: %d\n", path, method, transport);
+    printf("Found %d Options\n", opt_len);
+
+    for (int i = 0; i < opt_len; i++) {
+        uint16_t opt_num;
+        request->driver->get_request_opt_num(request->driver, request, i, &opt_num);
+
+        if (opt_num == 17) {
+            uint32_t opt_val;
+            request->driver->get_request_opt_as_uint(request->driver, request, i, &opt_val);
+            printf("Option #%d: %d %u\n", i, opt_num, opt_val);
+        } else if (opt_num == 3 || opt_num == 292) {
+            char opt_val[20];
+            request->driver->get_request_opt_as_str(request->driver, request, i, opt_val, 20);
+            printf("Option #%d: %d %s\n", i, opt_num, opt_val);
+        } else {
+            printf("Option #%d: %d\n", i, opt_num);
+        }
     }
+
     return NULL;
 }
 

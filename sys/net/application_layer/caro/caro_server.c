@@ -170,25 +170,13 @@ static gcoap_listener_t _listener = {
 };
 
 
-void _convert_gcoap_pkt_to_request(coap_pkt_t* pkt, caro_request_t* request,const char* path, method_t m, transport_t t){
+void _convert_gcoap_pkt_to_request(struct server_driver_t* driver, coap_pkt_t* pkt, caro_request_t* request, const char* path, method_t m, transport_t t){
     request->path = path;
     request->method = m;
     request->transport = t;
-    request->ver_t_tkl = pkt->hdr->ver_t_tkl;
-    request->id = pkt->hdr->id;
-    for (int i = 0; i < pkt->options_len; i++) {
-        coap_optpos_t opt = pkt->options[i];
+    request->gcoap_req = pkt;
 
-        request->options[i].opt_num = opt.opt_num;
-        coap_opt_get_uint(pkt, opt.opt_num, &request->options[i].int_value);
-        coap_opt_get_string(pkt, opt.opt_num, (uint8_t*)request->options[i].str_value, 255, '\0');
-
-        printf("=================\nOption #%d\n", i);
-    }
-    request->options_len = pkt->options_len;
-
-    request->payload = pkt->payload;
-    request->payload_len = pkt->payload_len;
+    request->driver = driver;
 }
 
 static ssize_t _gcoap_universal_udp_handler(coap_pkt_t* pdu, uint8_t *buf, size_t len, coap_request_ctx_t *ctx)
@@ -213,7 +201,8 @@ static ssize_t _gcoap_universal_udp_handler(coap_pkt_t* pdu, uint8_t *buf, size_
 
             caro_request_t request;
             //printf("TEST1: %p\n", (void*)&request);
-            _convert_gcoap_pkt_to_request(pdu, &request, ctx->resource->path, method, UDP);
+            // TODO: check if it's ok to just pass the gcoap_driver
+            _convert_gcoap_pkt_to_request(&gcoap_driver, pdu, &request, ctx->resource->path, method, UDP);
             //printf("TEST2: %p\n", (void*)&request);
             r.handler(&request);
 
@@ -275,11 +264,53 @@ void _gcoap_add_payload(struct server_driver_t* sd, uint8_t * payload) {
     printf("add payload\n");
 }
 
+void _gcoap_get_request_header_data(struct server_driver_t* sd, caro_request_t* request, const char** path_p, uint8_t* ver_t_tkl_p, uint16_t* id_p, method_t* m_p, transport_t* t_p, uint16_t* opt_len_p, uint16_t* pay_len_p){
+    (void)sd;
+
+    if (path_p) *path_p = request->path;
+    if (ver_t_tkl_p) *ver_t_tkl_p = request->gcoap_req->hdr->ver_t_tkl;
+    if (id_p) *id_p = request->gcoap_req->hdr->id;
+    if (m_p) *m_p = request->method;
+    if (t_p) *t_p = request->transport;
+    if (opt_len_p) *opt_len_p = request->gcoap_req->options_len;
+    if (pay_len_p) *pay_len_p = request->gcoap_req->payload_len;
+}
+
+void _gcoap_get_request_opt_num(struct server_driver_t* sd, caro_request_t* request, uint32_t idx, uint16_t* num_p) {
+    (void)sd;
+
+    *num_p = request->gcoap_req->options[idx].opt_num;
+}
+
+
+void _gcoap_get_request_opt_as_uint(struct server_driver_t* sd, caro_request_t* request, uint32_t idx, uint32_t* val_p) {
+    uint16_t opt_num;
+    sd->get_request_opt_num(sd, request, idx, &opt_num);
+    coap_opt_get_uint(request->gcoap_req, opt_num, val_p);
+}
+
+void _gcoap_get_request_opt_as_str(struct server_driver_t* sd, caro_request_t* request, uint32_t idx, char* val_p, size_t max_len) {
+    uint16_t opt_num;
+    sd->get_request_opt_num(sd, request, idx, &opt_num);
+    coap_opt_get_string(request->gcoap_req, opt_num, (uint8_t*)val_p, max_len, ' '); // TODO: check separator or switch implementation
+}
+
+void _gcoap_get_request_payload(struct server_driver_t* sd, caro_request_t* request, const char** pay_p) {
+    (void)sd;
+
+    *pay_p = (const char*)request->gcoap_req->payload;
+}
+
 server_driver_t gcoap_driver = {
         .start_server = &_gcoap_start_server,
         .register_resource = &_gcoap_register_resource,
         .initialize_response = &_gcoap_initialize_response,
         .add_str_option = &_gcoap_add_str_option,
         .add_int_option = &_gcoap_add_int_option,
-        .add_payload = &_gcoap_add_payload
+        .add_payload = &_gcoap_add_payload,
+        .get_request_header_data = &_gcoap_get_request_header_data,
+        .get_request_opt_num = &_gcoap_get_request_opt_num,
+        .get_request_opt_as_uint = &_gcoap_get_request_opt_as_uint,
+        .get_request_opt_as_str = &_gcoap_get_request_opt_as_str,
+        .get_request_payload = &_gcoap_get_request_payload
 };
