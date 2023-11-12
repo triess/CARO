@@ -108,12 +108,18 @@ typedef struct caro_request_t {
     struct server_driver_t* driver;
 } caro_request_t;
 
-typedef struct response_t{
-//     server_driver_t driver; // TODO
-    transport_t transport;
-} response_t;
+typedef struct response_t {
+    uint8_t *buf;
+    size_t buf_len;
+    bool opts_finished;
+    size_t res_len;
 
-typedef response_t* (*caro_resource_handler_t)(caro_request_t*);
+    coap_pkt_t* gcoap_res;
+
+    struct server_driver_t* driver;
+} caro_response_t;
+
+typedef bool (*caro_resource_handler_t)(caro_request_t*, caro_response_t*);
 
 typedef struct {
     char* path;
@@ -130,10 +136,10 @@ typedef struct server_driver_t {
     void (*get_request_opt_as_uint)(struct server_driver_t*, caro_request_t*, uint32_t, uint32_t*);
     void (*get_request_opt_as_str)(struct server_driver_t*, caro_request_t*, uint32_t, char*, size_t max_len);
     void (*get_request_payload)(struct server_driver_t*, caro_request_t*, const char**);
-    void (*initialize_response)(struct server_driver_t*, response_t*);
-    void (*add_str_option)(struct server_driver_t*,uint16_t,char*);
-    void (*add_int_option)(struct server_driver_t*,uint16_t,uint32_t);
-    void (*add_payload)(struct server_driver_t*,uint8_t*);
+    void (*initialize_response)(struct server_driver_t*, caro_request_t*, caro_response_t*, uint8_t);
+    void (*response_add_uint_option)(struct server_driver_t*, caro_response_t*, uint16_t,uint32_t);
+    void (*response_add_str_option)(struct server_driver_t*, caro_response_t*, uint16_t,const char*);
+    void (*response_add_payload)(struct server_driver_t*, caro_response_t*, uint8_t*, size_t);
 } server_driver_t;
 
 typedef struct {

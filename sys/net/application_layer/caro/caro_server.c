@@ -204,7 +204,14 @@ static ssize_t _gcoap_universal_udp_handler(coap_pkt_t* pdu, uint8_t *buf, size_
             // TODO: check if it's ok to just pass the gcoap_driver
             _convert_gcoap_pkt_to_request(&gcoap_driver, pdu, &request, ctx->resource->path, method, UDP);
             //printf("TEST2: %p\n", (void*)&request);
-            r.handler(&request);
+
+            caro_response_t response;
+            response.buf = buf;
+            response.buf_len = len;
+            r.handler(&request, &response);
+
+            // TODO: do we need a method to send a response?
+            return response.res_len;
 
             break;
         } else {
@@ -236,32 +243,6 @@ void _gcoap_register_resource(struct server_driver_t* sd, methods_selector_t ms,
         gcoap_register_listener(&_listener);
         is_added = true;
     }
-}
-
-void _gcoap_initialize_response(struct server_driver_t* sd, response_t* response) {
-    (void)sd;
-    (void)response;
-    printf("initialize response\n");
-}
-
-void _gcoap_add_str_option(struct server_driver_t* sd, uint16_t opt_num, char* opt_val) {
-    (void)sd;
-    (void)opt_num;
-    (void)opt_val;
-    printf("add string option\n");
-}
-
-void _gcoap_add_int_option(struct server_driver_t* sd, uint16_t opt_num, uint32_t opt_val) {
-    (void)sd;
-    (void)opt_num;
-    (void)opt_val;
-    printf("add int option\n");
-}
-
-void _gcoap_add_payload(struct server_driver_t* sd, uint8_t * payload) {
-    (void)sd;
-    (void)payload;
-    printf("add payload\n");
 }
 
 void _gcoap_get_request_header_data(struct server_driver_t* sd, caro_request_t* request, const char** path_p, uint8_t* ver_t_tkl_p, uint16_t* id_p, method_t* m_p, transport_t* t_p, uint16_t* opt_len_p, uint16_t* pay_len_p){
@@ -301,16 +282,60 @@ void _gcoap_get_request_payload(struct server_driver_t* sd, caro_request_t* requ
     *pay_p = (const char*)request->gcoap_req->payload;
 }
 
+void _gcoap_initialize_response(struct server_driver_t* sd, caro_request_t* request, caro_response_t* response, uint8_t code) {
+    (void)sd;
+    printf("initialize response\n");
+
+    response->opts_finished = false;
+    response->res_len = 0;
+
+    response->gcoap_res = request->gcoap_req; // TODO: Does this even make sense?
+    gcoap_resp_init(response->gcoap_res, response->buf, response->buf_len, code);
+}
+
+void _gcoap_response_add_uint_option(struct server_driver_t* sd, caro_response_t* response, uint16_t opt_num, uint32_t opt_val) {
+    (void)sd;
+    (void)opt_num;
+    (void)opt_val;
+    printf("add int option\n");
+
+    coap_opt_add_uint(response->gcoap_res, opt_num, opt_val);
+}
+
+void _gcoap_response_add_str_option(struct server_driver_t* sd, caro_response_t* response, uint16_t opt_num, const char* opt_val) {
+    (void)sd;
+    (void)response;
+    (void)opt_num;
+    (void)opt_val;
+    printf("add string option\n");
+}
+
+void _gcoap_response_add_payload(struct server_driver_t* sd, caro_response_t* response, uint8_t * payload, size_t pay_len) {
+    (void)sd;
+    (void)response;
+    (void)payload;
+    printf("add payload\n");
+
+    if (!response->opts_finished) {
+        response->res_len = coap_opt_finish(response->gcoap_res, COAP_OPT_FINISH_PAYLOAD);
+        response->opts_finished = true;
+    }
+
+    // TODO: check buf size with pay_len
+    memcpy(response->gcoap_res->payload, payload, pay_len);
+    response->res_len += pay_len;
+}
+
 server_driver_t gcoap_driver = {
         .start_server = &_gcoap_start_server,
         .register_resource = &_gcoap_register_resource,
-        .initialize_response = &_gcoap_initialize_response,
-        .add_str_option = &_gcoap_add_str_option,
-        .add_int_option = &_gcoap_add_int_option,
-        .add_payload = &_gcoap_add_payload,
         .get_request_header_data = &_gcoap_get_request_header_data,
         .get_request_opt_num = &_gcoap_get_request_opt_num,
         .get_request_opt_as_uint = &_gcoap_get_request_opt_as_uint,
         .get_request_opt_as_str = &_gcoap_get_request_opt_as_str,
-        .get_request_payload = &_gcoap_get_request_payload
+        .get_request_payload = &_gcoap_get_request_payload,
+        .initialize_response = &_gcoap_initialize_response,
+        .response_add_str_option = &_gcoap_response_add_str_option,
+        .response_add_uint_option = &_gcoap_response_add_uint_option,
+        .response_add_payload = &_gcoap_response_add_payload
 };

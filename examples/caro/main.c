@@ -32,15 +32,16 @@
 
 
 
-response_t* index_handler(caro_request_t* request) {
+bool index_handler(caro_request_t* request, caro_response_t* response) {
     printf("** HIER KÖNNTE IHR USER CODE STEHEN **\n");
 
     const char* path;
     method_t method;
     transport_t transport;
     uint16_t opt_len;
+    uint16_t pay_len;
 
-    request->driver->get_request_header_data(request->driver, request, &path, NULL, NULL, &method, &transport, &opt_len, NULL);
+    request->driver->get_request_header_data(request->driver, request, &path, NULL, NULL, &method, &transport, &opt_len, &pay_len);
 
     printf("Request:\n\tPath: %s\n\tMethod: %d\n\tTransport: %d\n", path, method, transport);
     printf("Found %d Options\n", opt_len);
@@ -62,7 +63,19 @@ response_t* index_handler(caro_request_t* request) {
         }
     }
 
-    return NULL;
+    printf("Payload len: %d\n", pay_len);
+    const char* payload;
+    request->driver->get_request_payload(request->driver, request, &payload);
+    printf("Payload: %s\n", payload);
+
+
+    // TODO: clean up driver access
+    request->driver->initialize_response(request->driver, request, response, COAP_CODE_CONTENT); // TODO: find out the correct code and enum it
+    request->driver->response_add_uint_option(request->driver, response, 12, 4);
+    char* server_message = "Hello, this is a message generated from the server user handler!";
+    request->driver->response_add_payload(request->driver, response, (uint8_t*)server_message, strlen(server_message));
+
+    return true;
 }
 
 kernel_pid_t gcoap_init(void);
