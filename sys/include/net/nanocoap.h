@@ -1077,7 +1077,7 @@ size_t coap_blockwise_put_char(coap_block_slicer_t *slicer, uint8_t *bufpos, cha
  * @returns     0 if block option not present
  * @returns     1 if structure has been filled
  */
-int coap_get_block(coap_pkt_t *pkt, coap_block1_t *block, uint16_t option);
+int coap_get_block_nano(coap_pkt_t *pkt, coap_block1_t *block, uint16_t option);
 
 /**
  * @brief    Block1 option getter
@@ -1098,7 +1098,7 @@ int coap_get_block(coap_pkt_t *pkt, coap_block1_t *block, uint16_t option);
  */
 static inline int coap_get_block1(coap_pkt_t *pkt, coap_block1_t *block)
 {
-    return coap_get_block(pkt, block, COAP_OPT_BLOCK1);
+    return coap_get_block_nano(pkt, block, COAP_OPT_BLOCK1);
 }
 
 /**
@@ -1112,7 +1112,7 @@ static inline int coap_get_block1(coap_pkt_t *pkt, coap_block1_t *block)
  */
 static inline int coap_get_block2(coap_pkt_t *pkt, coap_block1_t *block)
 {
-    return coap_get_block(pkt, block, COAP_OPT_BLOCK2);
+    return coap_get_block_nano(pkt, block, COAP_OPT_BLOCK2);
 }
 
 /**

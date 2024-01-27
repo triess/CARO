@@ -829,7 +829,7 @@ static unsigned _slicer2blkopt(coap_block_slicer_t *slicer, bool more)
     return (blknum << 4) | _size2szx(blksize) | (more ? 0x8 : 0);
 }
 
-int coap_get_block(coap_pkt_t *pkt, coap_block1_t *block, uint16_t option)
+int coap_get_block_nano(coap_pkt_t *pkt, coap_block1_t *block, uint16_t option)
 {
     block->more = coap_get_blockopt(pkt, option, &block->blknum, &block->szx);
     if (block->more >= 0) {
