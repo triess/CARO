@@ -1,0 +1,3463 @@
+From 203d2286382bdb9f9f96a28897275a4066ec54f4 Mon Sep 17 00:00:00 2001
+From: Jon Shallow <supjps-libcoap@jpshallow.com>
+Date: Fri, 8 Sep 2023 09:22:48 +0000
+Subject: [PATCH 2/4] RIOT: library fixes for different build types
+
+coap_debug.h: Support logging level set to _COAP_LOG_EMERG
+coap_pdu.h: handle small ints
+coap_pdu_internal.h: handle small ints
+coap_session_internal.h: handle small ints
+coap_uthash_internal.h: handle small ints
+coap_block.c: Handle small ints
+coap_debug.c: Fix use of vsnprintf() and vfprintf()
+coap_pdu.c: Handle small ints
+coap_tinydtls.c: Handle small ints
+coap_uri.c: Fix alignment issue in coap_new_uri()
+
+uncrustify run on RIOT examples to conform to RIOT's coding standards/
+---
+ .pre-commit-config.yaml                       |   2 +-
+ Makefile.am                                   |   9 +
+ coap_config.h.riot                            |  32 +-
+ coap_config.h.riot.in                         |  32 +-
+ examples/riot/Makefile                        |  11 +-
+ examples/riot/examples_libcoap_client/Kconfig |   6 -
+ .../riot/examples_libcoap_client/Makefile.ci  |  21 +
+ .../riot/examples_libcoap_client/app.config   |   2 +
+ .../examples_libcoap_client/client-coap.c     | 371 +++++++--------
+ examples/riot/examples_libcoap_client/main.c  |  32 +-
+ examples/riot/examples_libcoap_server/Kconfig |   9 +-
+ .../riot/examples_libcoap_server/Makefile.ci  |  21 +
+ .../riot/examples_libcoap_server/app.config   |   4 +
+ examples/riot/examples_libcoap_server/main.c  |  32 +-
+ .../examples_libcoap_server/server-coap.c     | 422 +++++++++---------
+ examples/riot/pkg_libcoap/Kconfig             | 102 +++--
+ examples/riot/pkg_libcoap/Makefile            |   2 +-
+ examples/riot/tests_pkg_libcoap/Kconfig       |  10 +
+ examples/riot/tests_pkg_libcoap/Makefile      |  35 ++
+ examples/riot/tests_pkg_libcoap/Makefile.ci   |  70 +++
+ examples/riot/tests_pkg_libcoap/README.md     |   7 +
+ examples/riot/tests_pkg_libcoap/app.config    |  13 +
+ .../riot/tests_pkg_libcoap/libcoap-test.c     | 328 ++++++++++++++
+ .../riot/tests_pkg_libcoap/libcoap-test.h     |  29 ++
+ examples/riot/tests_pkg_libcoap/main.c        |  43 ++
+ .../riot/tests_pkg_libcoap/tests/01-run.py    |  18 +
+ include/coap3/coap_debug.h                    |   2 +-
+ include/coap3/coap_pdu.h                      |  10 +-
+ include/coap3/coap_pdu_internal.h             |  12 +
+ include/coap3/coap_resource.h                 |  11 +-
+ include/coap3/coap_session_internal.h         |   2 +-
+ include/coap3/coap_uthash_internal.h          | 118 ++---
+ src/coap_address.c                            | 335 +++++---------
+ src/coap_block.c                              |  10 +-
+ src/coap_debug.c                              |  19 +-
+ src/coap_io.c                                 |  14 +-
+ src/coap_mem.c                                |  19 +-
+ src/coap_net.c                                |   4 +-
+ src/coap_pdu.c                                |  14 +-
+ src/coap_resource.c                           |  10 +-
+ src/coap_tinydtls.c                           |   2 +-
+ src/coap_uri.c                                |  16 +-
+ 42 files changed, 1456 insertions(+), 805 deletions(-)
+ create mode 100644 examples/riot/tests_pkg_libcoap/Kconfig
+ create mode 100644 examples/riot/tests_pkg_libcoap/Makefile
+ create mode 100644 examples/riot/tests_pkg_libcoap/Makefile.ci
+ create mode 100644 examples/riot/tests_pkg_libcoap/README.md
+ create mode 100644 examples/riot/tests_pkg_libcoap/app.config
+ create mode 100644 examples/riot/tests_pkg_libcoap/libcoap-test.c
+ create mode 100644 examples/riot/tests_pkg_libcoap/libcoap-test.h
+ create mode 100644 examples/riot/tests_pkg_libcoap/main.c
+ create mode 100755 examples/riot/tests_pkg_libcoap/tests/01-run.py
+
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index ba4520e0..d3b7c940 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -4,7 +4,7 @@ repos:
+     hooks:
+     -   id: astyle_py
+         files: '^.*\.(c|cpp|cxx|h|h.in|h.riot|h.riot.in|h.windows|h.windows.in|h.contiki|hpp|inc)$'
+-        exclude: '^.*/(coap_uthash_internal.h|coap_utlist_internal.h)$|examples/riot/examples_libcoap_.*$'
++        exclude: '^.*/(coap_uthash_internal.h|coap_utlist_internal.h)$|examples/riot/examples_libcoap_.*$|examples/riot/tests_pkg_libcoap/.*$'
+         args: ['--style=google',
+                '--align-pointer=name',
+                '--align-reference=name',
+diff --git a/Makefile.am b/Makefile.am
+index fa5f101b..1dbd0528 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -82,6 +82,15 @@ EXTRA_DIST = \
+   examples/riot/pkg_libcoap/Makefile.dep \
+   examples/riot/pkg_libcoap/Makefile.include \
+   examples/riot/pkg_libcoap/Makefile.libcoap \
++  examples/riot/tests_pkg_libcoap/app.config \
++  examples/riot/tests_pkg_libcoap/Kconfig \
++  examples/riot/tests_pkg_libcoap/libcoap-test.c \
++  examples/riot/tests_pkg_libcoap/libcoap-test.h \
++  examples/riot/tests_pkg_libcoap/main.c \
++  examples/riot/tests_pkg_libcoap/Makefile \
++  examples/riot/tests_pkg_libcoap/Makefile.ci \
++  examples/riot/tests_pkg_libcoap/README.md \
++  examples/riot/tests_pkg_libcoap/tests/01-run.py \
+   examples/riot/README \
+   Makefile.libcoap \
+   include/coap$(LIBCOAP_API_VERSION)/coap_internal.h \
+diff --git a/coap_config.h.riot b/coap_config.h.riot
+index 19a238d9..f6e6d90d 100644
+--- a/coap_config.h.riot
++++ b/coap_config.h.riot
+@@ -18,12 +18,33 @@
+ #define COAP_CONSTRAINED_STACK 1
+ #endif
+ 
++/*
++ * For systems that define int as being 2 bytes, need to make sure the
++ * minimum configuration is set up (overridden if explicitely defined).
++ */
++#include <limits.h>
++
++#if (UINT_MAX <= 65535)
++#define COAP_DISABLE_TCP 1
++#define COAP_AF_UNIX_SUPPORT 0
++#define COAP_OSCORE_SUPPORT 0
++#define COAP_WITH_OBSERVE_PERSIST 0
++#define COAP_WS_SUPPORT 0
++#define COAP_Q_BLOCK_SUPPORT 0
++#define COAP_MAX_LOGGING_LEVEL 0
++#endif /* UINT_MAX < 65536 */
++
+ #ifdef CONFIG_LIBCOAP_MAX_LOGGING_LEVEL
+ #ifndef COAP_MAX_LOGGING_LEVEL
+-/* Define to 1 to build without TCP support. */
++/* Define 0-8 for max logging levels. */
+ #define COAP_MAX_LOGGING_LEVEL CONFIG_LIBCOAP_MAX_LOGGING_LEVEL
+ #endif /* COAP_MAX_LOGGING_LEVEL */
+-#endif /* CONFIG_LIBCOAP_MAX_LOGGING_LEVEL */
++#else /* ! CONFIG_LIBCOAP_MAX_LOGGING_LEVEL */
++#ifndef COAP_MAX_LOGGING_LEVEL
++/* Define 0-8 for max logging levels. */
++#define COAP_MAX_LOGGING_LEVEL 4
++#endif /* COAP_MAX_LOGGING_LEVEL */
++#endif /* ! CONFIG_LIBCOAP_MAX_LOGGING_LEVEL */
+ 
+ #ifdef CONFIG_LIBCOAP_IPV4_SUPPORT
+ #ifndef COAP_IPV4_SUPPORT
+@@ -51,7 +72,12 @@
+ /* Define to 1 to build without TCP support. */
+ #define COAP_DISABLE_TCP 0
+ #endif /* COAP_DISABLE_TCP */
+-#endif /* CONFIG_LIBCOAP_TCP_SUPPORT */
++#else /* ! CONFIG_LIBCOAP_TCP_SUPPORT */
++#ifndef COAP_DISABLE_TCP
++/* Define to 1 to build without TCP support. */
++#define COAP_DISABLE_TCP 1
++#endif /* ! COAP_DISABLE_TCP */
++#endif /* ! CONFIG_LIBCOAP_TCP_SUPPORT */
+ 
+ #ifdef CONFIG_LIBCOAP_OSCORE_SUPPORT
+ #ifndef COAP_OSCORE_SUPPORT
+diff --git a/coap_config.h.riot.in b/coap_config.h.riot.in
+index 2962008f..69773897 100644
+--- a/coap_config.h.riot.in
++++ b/coap_config.h.riot.in
+@@ -18,12 +18,33 @@
+ #define COAP_CONSTRAINED_STACK 1
+ #endif
+ 
++/*
++ * For systems that define int as being 2 bytes, need to make sure the
++ * minimum configuration is set up (overridden if explicitely defined).
++ */
++#include <limits.h>
++
++#if (UINT_MAX <= 65535)
++#define COAP_DISABLE_TCP 1
++#define COAP_AF_UNIX_SUPPORT 0
++#define COAP_OSCORE_SUPPORT 0
++#define COAP_WITH_OBSERVE_PERSIST 0
++#define COAP_WS_SUPPORT 0
++#define COAP_Q_BLOCK_SUPPORT 0
++#define COAP_MAX_LOGGING_LEVEL 0
++#endif /* UINT_MAX < 65536 */
++
+ #ifdef CONFIG_LIBCOAP_MAX_LOGGING_LEVEL
+ #ifndef COAP_MAX_LOGGING_LEVEL
+-/* Define to 1 to build without TCP support. */
++/* Define 0-8 for max logging levels. */
+ #define COAP_MAX_LOGGING_LEVEL CONFIG_LIBCOAP_MAX_LOGGING_LEVEL
+ #endif /* COAP_MAX_LOGGING_LEVEL */
+-#endif /* CONFIG_LIBCOAP_MAX_LOGGING_LEVEL */
++#else /* ! CONFIG_LIBCOAP_MAX_LOGGING_LEVEL */
++#ifndef COAP_MAX_LOGGING_LEVEL
++/* Define 0-8 for max logging levels. */
++#define COAP_MAX_LOGGING_LEVEL 4
++#endif /* COAP_MAX_LOGGING_LEVEL */
++#endif /* ! CONFIG_LIBCOAP_MAX_LOGGING_LEVEL */
+ 
+ #ifdef CONFIG_LIBCOAP_IPV4_SUPPORT
+ #ifndef COAP_IPV4_SUPPORT
+@@ -51,7 +72,12 @@
+ /* Define to 1 to build without TCP support. */
+ #define COAP_DISABLE_TCP 0
+ #endif /* COAP_DISABLE_TCP */
+-#endif /* CONFIG_LIBCOAP_TCP_SUPPORT */
++#else /* ! CONFIG_LIBCOAP_TCP_SUPPORT */
++#ifndef COAP_DISABLE_TCP
++/* Define to 1 to build without TCP support. */
++#define COAP_DISABLE_TCP 1
++#endif /* ! COAP_DISABLE_TCP */
++#endif /* ! CONFIG_LIBCOAP_TCP_SUPPORT */
+ 
+ #ifdef CONFIG_LIBCOAP_OSCORE_SUPPORT
+ #ifndef COAP_OSCORE_SUPPORT
+diff --git a/examples/riot/Makefile b/examples/riot/Makefile
+index 79f16d2d..1051c83e 100644
+--- a/examples/riot/Makefile
++++ b/examples/riot/Makefile
+@@ -10,7 +10,7 @@
+ RIOT=RIOT
+ TARGET?=native
+ 
+-all: RIOT pkg examples client server
++all: RIOT pkg examples client server tests
+ 
+ RIOT:
+ 	git clone --depth 1 https://github.com/RIOT-OS/RIOT.git $@
+@@ -38,6 +38,8 @@ examples:
+ 	cd examples_libcoap_client && cp -r * ../RIOT/examples/libcoap-client
+ 	rm -rf RIOT/examples/libcoap-server && mkdir RIOT/examples/libcoap-server
+ 	cd examples_libcoap_server && cp -r * ../RIOT/examples/libcoap-server
++	rm -rf RIOT/tests/pkg/libcoap && mkdir -p RIOT/tests/pkg/libcoap
++	cd tests_pkg_libcoap && cp -r * ../RIOT/tests/pkg/libcoap
+ 
+ client:	RIOT pkg examples
+ 	$(MAKE) -C RIOT/examples/libcoap-client/ RIOT_CI_BUILD=1
+@@ -45,7 +47,14 @@ client:	RIOT pkg examples
+ server:	RIOT pkg examples
+ 	$(MAKE) -C RIOT/examples/libcoap-server/ RIOT_CI_BUILD=1
+ 
++tests:	RIOT pkg examples
++	$(MAKE) -C RIOT/tests/pkg/libcoap/ RIOT_CI_BUILD=1
++
++run_tests:
++	$(MAKE) -C RIOT/tests/pkg/libcoap/ test
++
+ clean:
+ 	rm -rf RIOT/pkg/libcoap
+ 	rm -rf RIOT/examples/libcoap-client
+ 	rm -rf RIOT/examples/libcoap-server
++	rm -rf RIOT/tests/pkg/libcoap
+diff --git a/examples/riot/examples_libcoap_client/Kconfig b/examples/riot/examples_libcoap_client/Kconfig
+index 1d6308ec..9c5ed2c3 100644
+--- a/examples/riot/examples_libcoap_client/Kconfig
++++ b/examples/riot/examples_libcoap_client/Kconfig
+@@ -10,10 +10,4 @@ config LIBCOAP_USE_PSK_ID
+     string "User ID to use for PSK communications"
+     default "user_abc"
+     depends on USEMODULE_TINYDTLS
+-config LIBCOAP_SERVER_SUPPORT
+-    bool "Set to y if server support is required"
+-    default n
+-config LIBCOAP_CLIENT_SUPPORT
+-    bool "Set to y if client support is required"
+-    default y
+ endif # USEMODULE_LIBCOAP
+diff --git a/examples/riot/examples_libcoap_client/Makefile.ci b/examples/riot/examples_libcoap_client/Makefile.ci
+index 0e7e4cfc..9e746742 100644
+--- a/examples/riot/examples_libcoap_client/Makefile.ci
++++ b/examples/riot/examples_libcoap_client/Makefile.ci
+@@ -1,5 +1,15 @@
+ BOARD_INSUFFICIENT_MEMORY := \
+     airfy-beacon \
++    arduino-duemilanove \
++    arduino-leonardo \
++    arduino-mega2560 \
++    arduino-nano \
++    arduino-uno \
++    atmega256rfr2-xpro \
++    atmega328p \
++    atmega328p-xplained-mini \
++    atmega8 \
++    atxmega-a3bu-xplained \
+     b-l072z-lrwan1 \
+     blackpill-stm32f103c8 \
+     blackpill-stm32f103cb \
+@@ -9,6 +19,7 @@ BOARD_INSUFFICIENT_MEMORY := \
+     calliope-mini \
+     cc2650-launchpad \
+     cc2650stk \
++    derfmega128 \
+     hifive1 \
+     hifive1b \
+     i-nucleo-lrwan1 \
+@@ -16,6 +27,9 @@ BOARD_INSUFFICIENT_MEMORY := \
+     lsn50 \
+     maple-mini \
+     microbit \
++    microduino-corerf \
++    msb-430 \
++    msb-430h \
+     nrf51dk \
+     nrf51dongle \
+     nrf6310 \
+@@ -32,10 +46,13 @@ BOARD_INSUFFICIENT_MEMORY := \
+     nucleo-l031k6 \
+     nucleo-l053r8 \
+     nucleo-l073rz \
++    olimex-msp430-h1611 \
++    olimex-msp430-h2618 \
+     opencm904 \
+     samd10-xmini \
+     saml10-xpro \
+     saml11-xpro \
++    samr21-xpro \
+     slstk3400a \
+     spark-core \
+     stk3200 \
+@@ -45,5 +62,9 @@ BOARD_INSUFFICIENT_MEMORY := \
+     stm32g0316-disco \
+     stm32l0538-disco \
+     stm32mp157c-dk2 \
++    telosb \
++    waspmote-pro \
+     yunjia-nrf51822 \
++    z1 \
++    zigduino \
+     #
+diff --git a/examples/riot/examples_libcoap_client/app.config b/examples/riot/examples_libcoap_client/app.config
+index bab86085..a76e237c 100644
+--- a/examples/riot/examples_libcoap_client/app.config
++++ b/examples/riot/examples_libcoap_client/app.config
+@@ -6,3 +6,5 @@ CONFIG_LIBCOAP_USE_PSK_ID="user_abc"
+ 
+ CONFIG_KCONFIG_USEPKG_LIBCOAP=y
+ # Logging levels are defined in pkg/libcoap using Kconfig
++
++CONFIG_KCONFIG_USEPKG_TINYDTLS=y
+diff --git a/examples/riot/examples_libcoap_client/client-coap.c b/examples/riot/examples_libcoap_client/client-coap.c
+index 1187b682..cb748590 100644
+--- a/examples/riot/examples_libcoap_client/client-coap.c
++++ b/examples/riot/examples_libcoap_client/client-coap.c
+@@ -11,9 +11,9 @@
+ 
+ #include "coap_config.h"
+ #include <coap3/coap.h>
++#include <stdio.h>
+ #include <sys/types.h>
+ #include <sys/socket.h>
+-#include <netdb.h>
+ #include "client-coap.h"
+ #include "macros/utils.h"
+ #include "net/utils.h"
+@@ -48,206 +48,213 @@ static coap_response_t
+ message_handler(coap_session_t *session,
+                 const coap_pdu_t *sent,
+                 const coap_pdu_t *received,
+-                const coap_mid_t id) {
+-  const uint8_t *data;
+-  size_t len;
+-  size_t offset;
+-  size_t total;
+-
+-  (void)session;
+-  (void)sent;
+-  (void)id;
+-  if (coap_get_data_large(received, &len, &data, &offset, &total)) {
+-    printf("%*.*s", (int)len, (int)len, (const char *)data);
+-    if (len + offset == total) {
+-      printf("\n");
+-      quit = 1;
+-    }
+-  }
+-  return COAP_RESPONSE_OK;
++                const coap_mid_t id)
++{
++    const uint8_t *data;
++    size_t len;
++    size_t offset;
++    size_t total;
++
++    (void)session;
++    (void)sent;
++    (void)id;
++    if (coap_get_data_large(received, &len, &data, &offset, &total)) {
++        printf("%*.*s", (int)len, (int)len, (const char *)data);
++        if (len + offset == total) {
++            printf("\n");
++            quit = 1;
++        }
++    }
++    return COAP_RESPONSE_OK;
+ }
+ 
+ static void
+ nack_handler(coap_session_t *session COAP_UNUSED,
+              const coap_pdu_t *sent COAP_UNUSED,
+              const coap_nack_reason_t reason,
+-             const coap_mid_t id COAP_UNUSED) {
+-
+-  switch (reason) {
+-  case COAP_NACK_TOO_MANY_RETRIES:
+-  case COAP_NACK_NOT_DELIVERABLE:
+-  case COAP_NACK_RST:
+-  case COAP_NACK_TLS_FAILED:
+-  case COAP_NACK_TLS_LAYER_FAILED:
+-  case COAP_NACK_WS_LAYER_FAILED:
+-  case COAP_NACK_WS_FAILED:
+-    coap_log_err("cannot send CoAP pdu\n");
+-    quit = 1;
+-    break;
+-  case COAP_NACK_ICMP_ISSUE:
+-  case COAP_NACK_BAD_RESPONSE:
+-  default:
+-    break;
+-  }
+-  return;
++             const coap_mid_t id COAP_UNUSED)
++{
++
++    switch (reason) {
++    case COAP_NACK_TOO_MANY_RETRIES:
++    case COAP_NACK_NOT_DELIVERABLE:
++    case COAP_NACK_RST:
++    case COAP_NACK_TLS_FAILED:
++    case COAP_NACK_TLS_LAYER_FAILED:
++    case COAP_NACK_WS_LAYER_FAILED:
++    case COAP_NACK_WS_FAILED:
++        coap_log_err("cannot send CoAP pdu\n");
++        quit = 1;
++        break;
++    case COAP_NACK_ICMP_ISSUE:
++    case COAP_NACK_BAD_RESPONSE:
++    default:
++        break;
++    }
++    return;
+ }
+ 
+ static int
+ resolve_address(const char *host, const char *service, coap_address_t *dst,
+-                int scheme_hint_bits) {
+-  uint16_t port = service ? atoi(service) : 0;
+-  int ret = 0;
+-  coap_str_const_t str_host;
+-  coap_addr_info_t *addr_info;
+-
+-  str_host.s = (const uint8_t *)host;
+-  str_host.length = strlen(host);
+-  addr_info = coap_resolve_address_info(&str_host, port, port,  port, port,
+-                                        AF_UNSPEC, scheme_hint_bits,
+-                                        COAP_RESOLVE_TYPE_REMOTE);
+-  if (addr_info) {
+-    ret = 1;
+-    *dst = addr_info->addr;
+-  }
+-
+-  coap_free_address_info(addr_info);
+-  return ret;
++                int scheme_hint_bits)
++{
++    uint16_t port = service ? atoi(service) : 0;
++    int ret = 0;
++    coap_str_const_t str_host;
++    coap_addr_info_t *addr_info;
++
++    str_host.s = (const uint8_t *)host;
++    str_host.length = strlen(host);
++    addr_info = coap_resolve_address_info(&str_host, port, port,  port, port,
++                                          AF_UNSPEC, scheme_hint_bits,
++                                          COAP_RESOLVE_TYPE_REMOTE);
++    if (addr_info) {
++        ret = 1;
++        *dst = addr_info->addr;
++    }
++
++    coap_free_address_info(addr_info);
++    return ret;
+ }
+ 
+ void
+-client_coap_init(int argc, char **argv) {
+-  coap_session_t *session = NULL;
+-  coap_pdu_t *pdu;
+-  coap_address_t dst;
+-  coap_mid_t mid;
+-  int len;
+-  coap_uri_t uri;
+-  char portbuf[8];
++client_coap_init(int argc, char **argv)
++{
++    coap_session_t *session = NULL;
++    coap_pdu_t *pdu;
++    coap_address_t dst;
++    coap_mid_t mid;
++    int len;
++    coap_uri_t uri;
++    char portbuf[8];
++
+ #define BUFSIZE 100
+-  unsigned char buf[BUFSIZE];
+-  int res;
+-  const char *coap_uri = COAP_CLIENT_URI;
+-
+-  if (argc > 1) {
+-    coap_uri = argv[1];
+-  }
+-
+-  /* Initialize libcoap library */
+-  coap_startup();
+-
+-  coap_set_log_level(COAP_MAX_LOGGING_LEVEL);
+-
+-  /* Parse the URI */
+-  len = coap_split_uri((const unsigned char *)coap_uri, strlen(coap_uri), &uri);
+-  if (len != 0) {
+-    coap_log_warn("Failed to parse uri %s\n", coap_uri);
+-    goto fail;
+-  }
+-
+-  snprintf(portbuf, sizeof(portbuf), "%d", uri.port);
+-  snprintf((char *)buf, sizeof(buf), "%*.*s", (int)uri.host.length,
+-           (int)uri.host.length, (const char *)uri.host.s);
+-  /* resolve destination address where packet should be sent */
+-  len = resolve_address((const char *)buf, portbuf, &dst, 1 << uri.scheme);
+-  if (len <= 0) {
+-    coap_log_warn("Failed to resolve address %*.*s\n", (int)uri.host.length,
+-                  (int)uri.host.length, (const char *)uri.host.s);
+-    goto fail;
+-  }
+-
+-  main_coap_context = coap_new_context(NULL);
+-  if (!main_coap_context) {
+-    coap_log_warn("Failed to initialize context\n");
+-    goto fail;
+-  }
+-
+-  coap_context_set_block_mode(main_coap_context, COAP_BLOCK_USE_LIBCOAP);
+-
+-  if (uri.scheme == COAP_URI_SCHEME_COAP) {
+-    session = coap_new_client_session(main_coap_context, NULL, &dst,
+-                                      COAP_PROTO_UDP);
+-  } else if (uri.scheme == COAP_URI_SCHEME_COAP_TCP) {
+-    session = coap_new_client_session(main_coap_context, NULL, &dst,
+-                                      COAP_PROTO_TCP);
+-#if defined (COAP_USE_PSK) && defined(COAP_USE_PSK_ID)
+-  } else {
+-    static coap_dtls_cpsk_t dtls_psk;
+-    static char client_sni[256];
++    unsigned char buf[BUFSIZE];
++    int res;
++    const char *coap_uri = COAP_CLIENT_URI;
+ 
+-    memset(client_sni, 0, sizeof(client_sni));
+-    memset(&dtls_psk, 0, sizeof(dtls_psk));
+-    dtls_psk.version = COAP_DTLS_CPSK_SETUP_VERSION;
+-    if (uri.host.length) {
+-      memcpy(client_sni, uri.host.s,
+-             MIN(uri.host.length, sizeof(client_sni) - 1));
++    if (argc > 1) {
++        coap_uri = argv[1];
+     }
+-    else {
+-      memcpy(client_sni, "localhost", 9);
++
++    /* Initialize libcoap library */
++    coap_startup();
++
++    coap_set_log_level(COAP_MAX_LOGGING_LEVEL);
++
++    /* Parse the URI */
++    len = coap_split_uri((const unsigned char *)coap_uri, strlen(coap_uri), &uri);
++    if (len != 0) {
++        coap_log_warn("Failed to parse uri %s\n", coap_uri);
++        goto fail;
++    }
++
++    snprintf(portbuf, sizeof(portbuf), "%d", uri.port);
++    snprintf((char *)buf, sizeof(buf), "%*.*s", (int)uri.host.length,
++             (int)uri.host.length, (const char *)uri.host.s);
++    /* resolve destination address where packet should be sent */
++    len = resolve_address((const char *)buf, portbuf, &dst, 1 << uri.scheme);
++    if (len <= 0) {
++        coap_log_warn("Failed to resolve address %*.*s\n", (int)uri.host.length,
++                      (int)uri.host.length, (const char *)uri.host.s);
++        goto fail;
+     }
+-    dtls_psk.client_sni = client_sni;
+-    dtls_psk.psk_info.identity.s = (const uint8_t *)COAP_USE_PSK_ID;
+-    dtls_psk.psk_info.identity.length = strlen(COAP_USE_PSK_ID);
+-    dtls_psk.psk_info.key.s = (const uint8_t *)COAP_USE_PSK;
+-    dtls_psk.psk_info.key.length = strlen(COAP_USE_PSK);
+ 
+-    session = coap_new_client_session_psk2(main_coap_context, NULL, &dst,
+-                                           COAP_PROTO_DTLS, &dtls_psk);
++    main_coap_context = coap_new_context(NULL);
++    if (!main_coap_context) {
++        coap_log_warn("Failed to initialize context\n");
++        goto fail;
++    }
++
++    coap_context_set_block_mode(main_coap_context, COAP_BLOCK_USE_LIBCOAP);
++
++    if (uri.scheme == COAP_URI_SCHEME_COAP) {
++        session = coap_new_client_session(main_coap_context, NULL, &dst,
++                                          COAP_PROTO_UDP);
++    }
++    else if (uri.scheme == COAP_URI_SCHEME_COAP_TCP) {
++        session = coap_new_client_session(main_coap_context, NULL, &dst,
++                                          COAP_PROTO_TCP);
++#if defined (COAP_USE_PSK) && defined(COAP_USE_PSK_ID)
++    }
++    else {
++        static coap_dtls_cpsk_t dtls_psk;
++        static char client_sni[256];
++
++        memset(client_sni, 0, sizeof(client_sni));
++        memset(&dtls_psk, 0, sizeof(dtls_psk));
++        dtls_psk.version = COAP_DTLS_CPSK_SETUP_VERSION;
++        if (uri.host.length) {
++            memcpy(client_sni, uri.host.s,
++                   MIN(uri.host.length, sizeof(client_sni) - 1));
++        }
++        else {
++            memcpy(client_sni, "localhost", 9);
++        }
++        dtls_psk.client_sni = client_sni;
++        dtls_psk.psk_info.identity.s = (const uint8_t *)COAP_USE_PSK_ID;
++        dtls_psk.psk_info.identity.length = strlen(COAP_USE_PSK_ID);
++        dtls_psk.psk_info.key.s = (const uint8_t *)COAP_USE_PSK;
++        dtls_psk.psk_info.key.length = strlen(COAP_USE_PSK);
++
++        session = coap_new_client_session_psk2(main_coap_context, NULL, &dst,
++                                               COAP_PROTO_DTLS, &dtls_psk);
+ #else /* ! COAP_USE_PSK && ! COAP_USE_PSK_ID */
+-    coap_log_err("CONFIG_LIBCOAP_USE_PSK and CONFIG_LIBCOAP_USE_PSK_ID not defined\n");
+-    goto fail;
++        coap_log_err("CONFIG_LIBCOAP_USE_PSK and CONFIG_LIBCOAP_USE_PSK_ID not defined\n");
++        goto fail;
+ #endif /* ! COAP_USE_PSK && ! COAP_USE_PSK_ID */
+-  }
+-
+-  if (!session) {
+-    coap_log_warn("Failed to create session\n");
+-    goto fail;
+-  }
+-
+-  coap_register_response_handler(main_coap_context, message_handler);
+-  coap_register_nack_handler(main_coap_context, nack_handler);
+-
+-  /* construct CoAP message */
+-  pdu = coap_pdu_init(COAP_MESSAGE_CON,
+-                      COAP_REQUEST_CODE_GET,
+-                      coap_new_message_id(session),
+-                      coap_session_max_pdu_size(session));
+-  if (!pdu) {
+-    coap_log_warn("Failed to create PDU\n");
+-    goto fail;
+-  }
+-
+-  len = coap_uri_into_options(&uri, &dst, &optlist, 1, buf, sizeof(buf));
+-  if (len) {
+-    coap_log_warn("Failed to create options\n");
+-    goto fail;
+-  }
+-
+-  /* Add option list (which will be sorted) to the PDU */
+-  if (optlist) {
+-    res = coap_add_optlist_pdu(pdu, &optlist);
+-    if (res != 1) {
+-      coap_log_warn("Failed to add options to PDU\n");
+-      goto fail;
+-    }
+-  }
+-
+-  /* and send the PDU */
+-  mid = coap_send(session, pdu);
+-  if (mid == COAP_INVALID_MID) {
+-    coap_log_warn("Failed to send PDU\n");
+-    goto fail;
+-  }
+-  while (!quit) {
+-    coap_io_process(main_coap_context, 1000);
+-  }
++    }
++
++    if (!session) {
++        coap_log_warn("Failed to create session\n");
++        goto fail;
++    }
++
++    coap_register_response_handler(main_coap_context, message_handler);
++    coap_register_nack_handler(main_coap_context, nack_handler);
++
++    /* construct CoAP message */
++    pdu = coap_pdu_init(COAP_MESSAGE_CON,
++                        COAP_REQUEST_CODE_GET,
++                        coap_new_message_id(session),
++                        coap_session_max_pdu_size(session));
++    if (!pdu) {
++        coap_log_warn("Failed to create PDU\n");
++        goto fail;
++    }
++
++    len = coap_uri_into_options(&uri, &dst, &optlist, 1, buf, sizeof(buf));
++    if (len) {
++        coap_log_warn("Failed to create options\n");
++        goto fail;
++    }
++
++    /* Add option list (which will be sorted) to the PDU */
++    if (optlist) {
++        res = coap_add_optlist_pdu(pdu, &optlist);
++        if (res != 1) {
++            coap_log_warn("Failed to add options to PDU\n");
++            goto fail;
++        }
++    }
++
++    /* and send the PDU */
++    mid = coap_send(session, pdu);
++    if (mid == COAP_INVALID_MID) {
++        coap_log_warn("Failed to send PDU\n");
++        goto fail;
++    }
++    while (!quit) {
++        coap_io_process(main_coap_context, 1000);
++    }
+ fail:
+-  /* Clean up library usage so client can be run again */
+-  quit = 0;
+-  coap_delete_optlist(optlist);
+-  optlist = NULL;
+-  coap_session_release(session);
+-  session = NULL;
+-  coap_free_context(main_coap_context);
+-  main_coap_context = NULL;
+-  coap_cleanup();
++    /* Clean up library usage so client can be run again */
++    quit = 0;
++    coap_delete_optlist(optlist);
++    optlist = NULL;
++    coap_session_release(session);
++    session = NULL;
++    coap_free_context(main_coap_context);
++    main_coap_context = NULL;
++    coap_cleanup();
+ }
+diff --git a/examples/riot/examples_libcoap_client/main.c b/examples/riot/examples_libcoap_client/main.c
+index d0a06158..23dacae5 100644
+--- a/examples/riot/examples_libcoap_client/main.c
++++ b/examples/riot/examples_libcoap_client/main.c
+@@ -32,22 +32,24 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
+ extern int client_coap_init(int argc, char **argv);
+ 
+ static const shell_command_t shell_commands[] = {
+-  { "coapc", "Start a libcoap client", client_coap_init },
+-  { NULL, NULL, NULL }
++    { "coapc", "Start a libcoap client", client_coap_init },
++    { NULL, NULL, NULL }
+ };
+ 
+ int
+-main(void) {
+-  /* we need a message queue for the thread running the shell in order to
+-   * receive potentially fast incoming networking packets */
+-  msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
+-  puts("RIOT libcoap client testing implementation");
+-
+-  /* start shell */
+-  puts("All up, running the shell now");
+-  char line_buf[SHELL_DEFAULT_BUFSIZE];
+-  shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
+-
+-  /* should be never reached */
+-  return 0;
++main(void)
++{
++    /* we need a message queue for the thread running the shell in order to
++     * receive potentially fast incoming networking packets */
++    msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
++    puts("RIOT libcoap client testing implementation");
++
++    /* start shell */
++    puts("All up, running the shell now");
++    char line_buf[SHELL_DEFAULT_BUFSIZE];
++
++    shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
++
++    /* should be never reached */
++    return 0;
+ }
+diff --git a/examples/riot/examples_libcoap_server/Kconfig b/examples/riot/examples_libcoap_server/Kconfig
+index 2150cb3d..5ade9943 100644
+--- a/examples/riot/examples_libcoap_server/Kconfig
++++ b/examples/riot/examples_libcoap_server/Kconfig
+@@ -3,10 +3,13 @@ config LIBCOAP_USE_PSK
+     string "Secret to use for PSK communications"
+     default "secretPSK"
+     depends on USEMODULE_TINYDTLS
+-config LIBCOAP_SERVER_SUPPORT
+-    bool "Set to y if server support is required"
+-    default y
+ config LIBCOAP_CLIENT_SUPPORT
+     bool "Set to y if ongoing proxy support is required"
+     default n
++if LIBCOAP_CLIENT_SUPPORT
++config LIBCOAP_USE_PSK_ID
++    string "User ID to use for ongoing PSK communications"
++    default "user_abc"
++    depends on USEMODULE_TINYDTLS
++endif # LIBCOAP_CLIENT_SUPPORT
+ endif # USEMODULE_LIBCOAP
+diff --git a/examples/riot/examples_libcoap_server/Makefile.ci b/examples/riot/examples_libcoap_server/Makefile.ci
+index 0e7e4cfc..9e746742 100644
+--- a/examples/riot/examples_libcoap_server/Makefile.ci
++++ b/examples/riot/examples_libcoap_server/Makefile.ci
+@@ -1,5 +1,15 @@
+ BOARD_INSUFFICIENT_MEMORY := \
+     airfy-beacon \
++    arduino-duemilanove \
++    arduino-leonardo \
++    arduino-mega2560 \
++    arduino-nano \
++    arduino-uno \
++    atmega256rfr2-xpro \
++    atmega328p \
++    atmega328p-xplained-mini \
++    atmega8 \
++    atxmega-a3bu-xplained \
+     b-l072z-lrwan1 \
+     blackpill-stm32f103c8 \
+     blackpill-stm32f103cb \
+@@ -9,6 +19,7 @@ BOARD_INSUFFICIENT_MEMORY := \
+     calliope-mini \
+     cc2650-launchpad \
+     cc2650stk \
++    derfmega128 \
+     hifive1 \
+     hifive1b \
+     i-nucleo-lrwan1 \
+@@ -16,6 +27,9 @@ BOARD_INSUFFICIENT_MEMORY := \
+     lsn50 \
+     maple-mini \
+     microbit \
++    microduino-corerf \
++    msb-430 \
++    msb-430h \
+     nrf51dk \
+     nrf51dongle \
+     nrf6310 \
+@@ -32,10 +46,13 @@ BOARD_INSUFFICIENT_MEMORY := \
+     nucleo-l031k6 \
+     nucleo-l053r8 \
+     nucleo-l073rz \
++    olimex-msp430-h1611 \
++    olimex-msp430-h2618 \
+     opencm904 \
+     samd10-xmini \
+     saml10-xpro \
+     saml11-xpro \
++    samr21-xpro \
+     slstk3400a \
+     spark-core \
+     stk3200 \
+@@ -45,5 +62,9 @@ BOARD_INSUFFICIENT_MEMORY := \
+     stm32g0316-disco \
+     stm32l0538-disco \
+     stm32mp157c-dk2 \
++    telosb \
++    waspmote-pro \
+     yunjia-nrf51822 \
++    z1 \
++    zigduino \
+     #
+diff --git a/examples/riot/examples_libcoap_server/app.config b/examples/riot/examples_libcoap_server/app.config
+index ecf27db3..66fe9bd3 100644
+--- a/examples/riot/examples_libcoap_server/app.config
++++ b/examples/riot/examples_libcoap_server/app.config
+@@ -4,3 +4,7 @@ CONFIG_LIBCOAP_USE_PSK="secretPSK"
+ 
+ CONFIG_KCONFIG_USEPKG_LIBCOAP=y
+ # Logging levels are defined in pkg/libcoap using Kconfig
++
++CONFIG_KCONFIG_USEPKG_TINYDTLS=y
++CONFIG_DTLS_PEER_MAX=2
++CONFIG_DTLS_HANDSHAKE_MAX=2
+diff --git a/examples/riot/examples_libcoap_server/main.c b/examples/riot/examples_libcoap_server/main.c
+index 78506c57..a9db1ffc 100644
+--- a/examples/riot/examples_libcoap_server/main.c
++++ b/examples/riot/examples_libcoap_server/main.c
+@@ -32,22 +32,24 @@ static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
+ extern int server_coap_init(int argc, char **argv);
+ 
+ static const shell_command_t shell_commands[] = {
+-  { "coaps", "Start a libcoap server", server_coap_init },
+-  { NULL, NULL, NULL }
++    { "coaps", "Start a libcoap server", server_coap_init },
++    { NULL, NULL, NULL }
+ };
+ 
+ int
+-main(void) {
+-  /* we need a message queue for the thread running the shell in order to
+-   * receive potentially fast incoming networking packets */
+-  msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
+-  puts("RIOT libcoap server testing implementation");
+-
+-  /* start shell */
+-  puts("All up, running the shell now");
+-  char line_buf[SHELL_DEFAULT_BUFSIZE];
+-  shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
+-
+-  /* should be never reached */
+-  return 0;
++main(void)
++{
++    /* we need a message queue for the thread running the shell in order to
++     * receive potentially fast incoming networking packets */
++    msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
++    puts("RIOT libcoap server testing implementation");
++
++    /* start shell */
++    puts("All up, running the shell now");
++    char line_buf[SHELL_DEFAULT_BUFSIZE];
++
++    shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
++
++    /* should be never reached */
++    return 0;
+ }
+diff --git a/examples/riot/examples_libcoap_server/server-coap.c b/examples/riot/examples_libcoap_server/server-coap.c
+index 4ec12efe..99642328 100644
+--- a/examples/riot/examples_libcoap_server/server-coap.c
++++ b/examples/riot/examples_libcoap_server/server-coap.c
+@@ -12,6 +12,7 @@
+ #include "coap_config.h"
+ #include <coap3/coap.h>
+ #include "server-coap.h"
++#include <stdio.h>
+ #include "macros/utils.h"
+ 
+ #ifdef CONFIG_LIBCOAP_USE_PSK
+@@ -33,259 +34,270 @@ static coap_resource_t *time_resource = NULL; /* just for testing */
+ static void
+ hnd_get_time(coap_resource_t *resource, coap_session_t  *session,
+              const coap_pdu_t *request, const coap_string_t *query,
+-             coap_pdu_t *response) {
+-  unsigned char buf[40];
+-  size_t len;
+-  coap_tick_t now;
+-  coap_tick_t t;
+-
+-  (void)resource;
+-  (void)session;
+-  (void)request;
+-  /* FIXME: return time, e.g. in human-readable by default and ticks
+-   * when query ?ticks is given. */
+-
+-  /* if my_clock_base was deleted, we pretend to have no such resource */
+-  coap_pdu_set_code(response, my_clock_base ? COAP_RESPONSE_CODE_CONTENT :
+-                    COAP_RESPONSE_CODE_NOT_FOUND);
+-  if (my_clock_base) {
+-    coap_add_option(response, COAP_OPTION_CONTENT_FORMAT,
+-                    coap_encode_var_safe(buf, sizeof(buf),
+-                                         COAP_MEDIATYPE_TEXT_PLAIN),
+-                    buf);
+-  }
+-
+-  coap_add_option(response, COAP_OPTION_MAXAGE,
+-                  coap_encode_var_safe(buf, sizeof(buf), 0x01), buf);
+-
+-  if (my_clock_base) {
+-
+-    /* calculate current time */
+-    coap_ticks(&t);
+-    now = my_clock_base + (t / COAP_TICKS_PER_SECOND);
+-
+-    if (query != NULL
+-        && coap_string_equal(query, coap_make_str_const("ticks"))) {
+-      /* output ticks */
+-      len = snprintf((char *)buf, sizeof(buf), "%u", (unsigned int)now);
+-      coap_add_data(response, len, buf);
++             coap_pdu_t *response)
++{
++    unsigned char buf[40];
++    size_t len;
++    coap_tick_t now;
++    coap_tick_t t;
++
++    (void)resource;
++    (void)session;
++    (void)request;
++    /* FIXME: return time, e.g. in human-readable by default and ticks
++     * when query ?ticks is given. */
++
++    /* if my_clock_base was deleted, we pretend to have no such resource */
++    coap_pdu_set_code(response, my_clock_base ? COAP_RESPONSE_CODE_CONTENT :
++                      COAP_RESPONSE_CODE_NOT_FOUND);
++    if (my_clock_base) {
++        coap_add_option(response, COAP_OPTION_CONTENT_FORMAT,
++                        coap_encode_var_safe(buf, sizeof(buf),
++                                             COAP_MEDIATYPE_TEXT_PLAIN),
++                        buf);
++    }
++
++    coap_add_option(response, COAP_OPTION_MAXAGE,
++                    coap_encode_var_safe(buf, sizeof(buf), 0x01), buf);
++
++    if (my_clock_base) {
++
++        /* calculate current time */
++        coap_ticks(&t);
++        now = my_clock_base + (t / COAP_TICKS_PER_SECOND);
++
++        if (query != NULL
++            && coap_string_equal(query, coap_make_str_const("ticks"))) {
++            /* output ticks */
++            len = snprintf((char *)buf, sizeof(buf), "%u", (unsigned int)now);
++            coap_add_data(response, len, buf);
++        }
+     }
+-  }
+ }
+ 
+ static void
+-init_coap_resources(coap_context_t *ctx) {
+-  coap_resource_t *r;
++init_coap_resources(coap_context_t *ctx)
++{
++    coap_resource_t *r;
++
+ #if 0
+-  r = coap_resource_init(NULL, 0, 0);
+-  coap_register_handler(r, COAP_REQUEST_GET, hnd_get_index);
++    r = coap_resource_init(NULL, 0, 0);
++    coap_register_handler(r, COAP_REQUEST_GET, hnd_get_index);
+ 
+-  coap_add_attr(r, coap_make_str_const("ct"), coap_make_str_const("0"), 0);
+-  coap_add_attr(r, coap_make_str_const("title"), coap_make_str_const("\"General Info\""), 0);
+-  coap_add_resource(ctx, r);
++    coap_add_attr(r, coap_make_str_const("ct"), coap_make_str_const("0"), 0);
++    coap_add_attr(r, coap_make_str_const("title"), coap_make_str_const("\"General Info\""), 0);
++    coap_add_resource(ctx, r);
+ #endif
+-  /* store clock base to use in /time */
+-  my_clock_base = clock_offset;
++    /* store clock base to use in /time */
++    my_clock_base = clock_offset;
+ 
+-  r = coap_resource_init(coap_make_str_const("time"), 0);
+-  if (!r) {
+-    goto error;
+-  }
++    r = coap_resource_init(coap_make_str_const("time"), 0);
++    if (!r) {
++        goto error;
++    }
+ 
+-  coap_resource_set_get_observable(r, 1);
+-  time_resource = r;
+-  coap_register_handler(r, COAP_REQUEST_GET, hnd_get_time);
++    coap_resource_set_get_observable(r, 1);
++    time_resource = r;
++    coap_register_handler(r, COAP_REQUEST_GET, hnd_get_time);
+ #if 0
+-  coap_register_handler(r, COAP_REQUEST_PUT, hnd_put_time);
+-  coap_register_handler(r, COAP_REQUEST_DELETE, hnd_delete_time);
++    coap_register_handler(r, COAP_REQUEST_PUT, hnd_put_time);
++    coap_register_handler(r, COAP_REQUEST_DELETE, hnd_delete_time);
+ #endif
+-  coap_add_attr(r, coap_make_str_const("ct"), coap_make_str_const("0"), 0);
+-  /* coap_add_attr(r, coap_make_str_const("title"),
+-                   coap_make_str_const("\"Internal Clock\""), 0); */
+-  coap_add_attr(r, coap_make_str_const("rt"), coap_make_str_const("\"ticks\""), 0);
+-  coap_add_attr(r, coap_make_str_const("if"), coap_make_str_const("\"clock\""), 0);
++    coap_add_attr(r, coap_make_str_const("ct"), coap_make_str_const("0"), 0);
++    /* coap_add_attr(r, coap_make_str_const("title"),
++                     coap_make_str_const("\"Internal Clock\""), 0); */
++    coap_add_attr(r, coap_make_str_const("rt"), coap_make_str_const("\"ticks\""), 0);
++    coap_add_attr(r, coap_make_str_const("if"), coap_make_str_const("\"clock\""), 0);
+ 
+-  coap_add_resource(ctx, r);
++    coap_add_resource(ctx, r);
+ #if 0
+-  if (coap_async_is_supported()) {
+-    r = coap_resource_init(coap_make_str_const("async"), 0);
+-    coap_register_handler(r, COAP_REQUEST_GET, hnd_get_async);
++    if (coap_async_is_supported()) {
++        r = coap_resource_init(coap_make_str_const("async"), 0);
++        coap_register_handler(r, COAP_REQUEST_GET, hnd_get_async);
+ 
+-    coap_add_attr(r, coap_make_str_const("ct"), coap_make_str_const("0"), 0);
+-    coap_add_resource(ctx, r);
+-  }
++        coap_add_attr(r, coap_make_str_const("ct"), coap_make_str_const("0"), 0);
++        coap_add_resource(ctx, r);
++    }
+ #endif
+ 
+-  return;
++    return;
+ error:
+-  coap_log_crit("cannot create resource\n");
++    coap_log_crit("cannot create resource\n");
+ }
+ 
+ static int
+-init_coap_context_endpoints(const char *use_psk) {
+-  coap_address_t listenaddress;
+-  gnrc_netif_t *netif = gnrc_netif_iter(NULL);
+-  ipv6_addr_t addr;
+-  char addr_str[INET6_ADDRSTRLEN + 8];
+-  int scheme_hint_bits = 1 << COAP_URI_SCHEME_COAP;
+-  coap_addr_info_t *info = NULL;
+-  coap_addr_info_t *info_list = NULL;
+-  coap_str_const_t local;
+-  int have_ep = 0;
+-
+-  /* Get the first address on the interface */
+-  if (gnrc_netif_ipv6_addrs_get(netif, &addr, sizeof(addr)) < 0) {
+-    puts("Unable to get first address of the interface");
+-    return 0;
+-  }
+-
+-  coap_address_init(&listenaddress);
+-  listenaddress.addr.sin6.sin6_family = AF_INET6;
+-  memcpy(&listenaddress.addr.sin6.sin6_addr, &addr,
+-         sizeof(listenaddress.addr.sin6.sin6_addr));
+-  coap_print_ip_addr(&listenaddress, addr_str, sizeof(addr_str));
+-  coap_log_info("Server IP [%s]\n", addr_str);
+-
+-  main_coap_context = coap_new_context(NULL);
+-  if (!main_coap_context) {
+-    return 0;
+-  }
+-
+-  if (use_psk && coap_dtls_is_supported()) {
+-    coap_dtls_spsk_t setup_data;
+-
+-    /* Need PSK set up before setting up endpoints */
+-    memset(&setup_data, 0, sizeof(setup_data));
+-    setup_data.version = COAP_DTLS_SPSK_SETUP_VERSION;
+-    setup_data.psk_info.key.s = (const uint8_t *)use_psk;
+-    setup_data.psk_info.key.length = strlen(use_psk);
+-    coap_context_set_psk2(main_coap_context, &setup_data);
+-    scheme_hint_bits |= 1 << COAP_URI_SCHEME_COAPS;
+-  }
+-
+-  local.s = (uint8_t *)addr_str;
+-  local.length = strlen(addr_str);
+-  info_list = coap_resolve_address_info(&local, COAP_DEFAULT_PORT,
+-                                        COAPS_DEFAULT_PORT,
+-                                        0, 0,
+-                                        0,
+-                                        scheme_hint_bits,
+-                                        COAP_RESOLVE_TYPE_REMOTE);
+-  for (info = info_list; info != NULL; info = info->next) {
+-    coap_endpoint_t *ep;
+-
+-    ep = coap_new_endpoint(main_coap_context, &info->addr, info->proto);
+-    if (!ep) {
+-      coap_log_warn("cannot create endpoint for proto %u\n",
+-                    info->proto);
+-    } else {
+-      have_ep = 1;
++init_coap_context_endpoints(const char *use_psk)
++{
++    coap_address_t listenaddress;
++    gnrc_netif_t *netif = gnrc_netif_iter(NULL);
++    ipv6_addr_t addr;
++    char addr_str[INET6_ADDRSTRLEN + 8];
++    int scheme_hint_bits = 1 << COAP_URI_SCHEME_COAP;
++    coap_addr_info_t *info = NULL;
++    coap_addr_info_t *info_list = NULL;
++    coap_str_const_t local;
++    int have_ep = 0;
++
++    /* Get the first address on the interface */
++    if (gnrc_netif_ipv6_addrs_get(netif, &addr, sizeof(addr)) < 0) {
++        puts("Unable to get first address of the interface");
++        return 0;
+     }
+-  }
+-  coap_free_address_info(info_list);
+-  if (!have_ep) {
+-    return 0;
+-  }
+ 
+-  return 1;
++    coap_address_init(&listenaddress);
++    listenaddress.addr.sin6.sin6_family = AF_INET6;
++    memcpy(&listenaddress.addr.sin6.sin6_addr, &addr,
++           sizeof(listenaddress.addr.sin6.sin6_addr));
++    coap_print_ip_addr(&listenaddress, addr_str, sizeof(addr_str));
++    coap_log_info("Server IP [%s]\n", addr_str);
++
++    main_coap_context = coap_new_context(NULL);
++    if (!main_coap_context) {
++        return 0;
++    }
++
++    if (use_psk && coap_dtls_is_supported()) {
++        coap_dtls_spsk_t setup_data;
++
++        /* Need PSK set up before setting up endpoints */
++        memset(&setup_data, 0, sizeof(setup_data));
++        setup_data.version = COAP_DTLS_SPSK_SETUP_VERSION;
++        setup_data.psk_info.key.s = (const uint8_t *)use_psk;
++        setup_data.psk_info.key.length = strlen(use_psk);
++        coap_context_set_psk2(main_coap_context, &setup_data);
++        scheme_hint_bits |= 1 << COAP_URI_SCHEME_COAPS;
++    }
++
++    local.s = (uint8_t *)addr_str;
++    local.length = strlen(addr_str);
++    info_list = coap_resolve_address_info(&local, COAP_DEFAULT_PORT,
++                                          COAPS_DEFAULT_PORT,
++                                          0, 0,
++                                          0,
++                                          scheme_hint_bits,
++                                          COAP_RESOLVE_TYPE_REMOTE);
++    for (info = info_list; info != NULL; info = info->next) {
++        coap_endpoint_t *ep;
++
++        ep = coap_new_endpoint(main_coap_context, &info->addr, info->proto);
++        if (!ep) {
++            coap_log_warn("cannot create endpoint for proto %u\n",
++                          info->proto);
++        }
++        else {
++            have_ep = 1;
++        }
++    }
++    coap_free_address_info(info_list);
++    if (!have_ep) {
++        return 0;
++    }
++
++    return 1;
+ }
+ 
+ void *
+-server_coap_run(void *arg) {
+-  (void)arg;
++server_coap_run(void *arg)
++{
++    (void)arg;
+ 
+-  /* Initialize libcoap library */
+-  coap_startup();
++    /* Initialize libcoap library */
++    coap_startup();
+ 
+-  coap_set_log_level(COAP_MAX_LOGGING_LEVEL);
++    coap_set_log_level(COAP_MAX_LOGGING_LEVEL);
+ 
+-  if (!init_coap_context_endpoints(COAP_USE_PSK)) {
+-    goto fail;
+-  }
++    if (!init_coap_context_endpoints(COAP_USE_PSK)) {
++        goto fail;
++    }
+ 
+-  /* Limit the number of idle sessions to save RAM */
+-  coap_context_set_max_idle_sessions(main_coap_context, 2);
+-  clock_offset = 1; /* Need a non-zero value */
+-  init_coap_resources(main_coap_context);
++    /* Limit the number of idle sessions to save RAM */
++    coap_context_set_max_idle_sessions(main_coap_context, 2);
++    clock_offset = 1; /* Need a non-zero value */
++    init_coap_resources(main_coap_context);
+ 
+-  coap_log_info("libcoap server ready\n");
+-  /* Keep on processing ... */
+-  while (quit == 0) {
+-    coap_io_process(main_coap_context, 1000);
+-  }
++    coap_log_info("libcoap server ready\n");
++    /* Keep on processing ... */
++    while (quit == 0) {
++        coap_io_process(main_coap_context, 1000);
++    }
+ fail:
+-  /* Clean up library usage so client can be run again */
+-  coap_free_context(main_coap_context);
+-  main_coap_context = NULL;
+-  coap_cleanup();
+-  running = 0;
+-  quit = 0;
+-  coap_log_info("libcoap server stopped\n");
+-  return NULL;
++    /* Clean up library usage so client can be run again */
++    coap_free_context(main_coap_context);
++    main_coap_context = NULL;
++    coap_cleanup();
++    running = 0;
++    quit = 0;
++    coap_log_info("libcoap server stopped\n");
++    return NULL;
+ }
+ 
+ static char server_stack[THREAD_STACKSIZE_MAIN +
+-                                               THREAD_EXTRA_STACKSIZE_PRINTF];
++                         THREAD_EXTRA_STACKSIZE_PRINTF];
+ 
+ static
+ void
+-start_server(void) {
+-  kernel_pid_t server_pid;
++start_server(void)
++{
++    kernel_pid_t server_pid;
++
++    /* Only one instance of the server */
++    if (running) {
++        puts("Error: server already running");
++        return;
++    }
+ 
+-  /* Only one instance of the server */
+-  if (running) {
+-    puts("Error: server already running");
+-    return;
+-  }
+-
+-  /* The server is initialized */
+-  server_pid = thread_create(server_stack,
+-                             sizeof(server_stack),
+-                             THREAD_PRIORITY_MAIN - 1,
+-                             THREAD_CREATE_STACKTEST,
+-                             server_coap_run, NULL, "libcoap_server");
+-
+-  /* Uncommon but better be sure */
+-  if (server_pid == EINVAL) {
+-    puts("ERROR: Thread invalid");
+-    return;
+-  }
++    /* The server is initialized */
++    server_pid = thread_create(server_stack,
++                               sizeof(server_stack),
++                               THREAD_PRIORITY_MAIN - 1,
++                               THREAD_CREATE_STACKTEST,
++                               server_coap_run, NULL, "libcoap_server");
++
++    /* Uncommon but better be sure */
++    if (server_pid == EINVAL) {
++        puts("ERROR: Thread invalid");
++        return;
++    }
+ 
+-  if (server_pid == EOVERFLOW) {
+-    puts("ERROR: Thread overflow!");
+-    return;
+-  }
++    if (server_pid == EOVERFLOW) {
++        puts("ERROR: Thread overflow!");
++        return;
++    }
+ 
+-  running = 1;
+-  return;
++    running = 1;
++    return;
+ }
+ 
+ static
+ void
+-stop_server(void) {
+-  /* check if server is running at all */
+-  if (running == 0) {
+-    puts("Error: libcoap server is not running");
+-    return;
+-  }
++stop_server(void)
++{
++    /* check if server is running at all */
++    if (running == 0) {
++        puts("Error: libcoap server is not running");
++        return;
++    }
+ 
+-  quit = 1;
++    quit = 1;
+ 
+-  puts("Stopping server...");
++    puts("Stopping server...");
+ }
+ 
+ void
+-server_coap_init(int argc, char **argv) {
+-  if (argc < 2) {
+-    printf("usage: %s start|stop\n", argv[0]);
++server_coap_init(int argc, char **argv)
++{
++    if (argc < 2) {
++        printf("usage: %s start|stop\n", argv[0]);
++        return;
++    }
++    if (strcmp(argv[1], "start") == 0) {
++        start_server();
++    }
++    else if (strcmp(argv[1], "stop") == 0) {
++        stop_server();
++    }
++    else {
++        printf("Error: invalid command. Usage: %s start|stop\n", argv[0]);
++    }
+     return;
+-  }
+-  if (strcmp(argv[1], "start") == 0) {
+-    start_server();
+-  } else if (strcmp(argv[1], "stop") == 0) {
+-    stop_server();
+-  } else {
+-    printf("Error: invalid command. Usage: %s start|stop\n", argv[0]);
+-  }
+-  return;
+ }
+diff --git a/examples/riot/pkg_libcoap/Kconfig b/examples/riot/pkg_libcoap/Kconfig
+index a4a8e7b0..b33f5562 100644
+--- a/examples/riot/pkg_libcoap/Kconfig
++++ b/examples/riot/pkg_libcoap/Kconfig
+@@ -14,7 +14,7 @@ if KCONFIG_USEPKG_LIBCOAP
+ 
+ choice LIBCOAP_DEBUG_LEVEL
+     bool "Set CoAP debugging level"
+-    default LIBCOAP_LOG_DEBUG
++    default LIBCOAP_LOG_WARNING
+     help
+         Set CoAP debugging level
+ 
+@@ -129,6 +129,16 @@ config LIBCOAP_CLIENT_SUPPORT
+         If both this option and LIBCOAP_SERVER_SUPPORT are disabled, then
+         both are automatically enabled for backwards compatability.
+ 
++if LIBCOAP_CLIENT_SUPPORT
++
++config LIBCOAP_MAX_LG_CRCVS
++    int "Max number of client large receives supported"
++    default 1
++    help
++        The maximum number of supported client large receives.
++
++endif # LIBCOAP_CLIENT_SUPPORT
++
+ config LIBCOAP_SERVER_SUPPORT
+     bool "Enable Server functionality within CoAP"
+     default n
+@@ -141,21 +151,12 @@ config LIBCOAP_SERVER_SUPPORT
+         If both this option and LIBCOAP_CLIENT_SUPPORT are disabled, then
+         both are automatically enabled for backwards compatability.
+ 
+-config LIBCOAP_MAX_STRING_SIZE
+-    int "Max size of string memory allocation"
+-    default 64
+-    help
+-        The maximum size of a supported string.
+-
+-config LIBCOAP_MAX_STRINGS
+-    int "Max number of strings supported"
+-    default 16
+-    help
+-        The maximum number of supported strings.
++if LIBCOAP_SERVER_SUPPORT
+ 
+ config LIBCOAP_MAX_ENDPOINTS
+     int "Max number of endpoints supported"
+-    default 4
++    default 4 if LIBCOAP_TCP_SUPPORT
++    default 2
+     help
+         The maximum number of supported endpoints.
+ 
+@@ -177,6 +178,45 @@ config LIBCOAP_MAX_ATTRIBUTES
+     help
+         The maximum number of supported resource attributes.
+ 
++config LIBCOAP_MAX_CACHE_KEYS
++    int "Max number of cache keys supported"
++    default 2
++    help
++        The maximum number of supported cache keys.
++
++config LIBCOAP_MAX_CACHE_ENTRIES
++    int "Max number of cache entries supported"
++    default 2
++    help
++        The maximum number of supported cache entries.
++
++config LIBCOAP_MAX_LG_SRCVS
++    int "Max number of server large receives supported"
++    default 2
++    help
++        The maximum number of supported server large receives.
++
++endif # LIBCOAP_SERVER_SUPPORT
++
++config LIBCOAP_MAX_LG_XMITS
++    int "Max number of large transmits supported"
++    default 2 if LIBCOAP_SERVER_SUPPORT
++    default 1
++    help
++        The maximum number of supported large transmits.
++
++config LIBCOAP_MAX_STRING_SIZE
++    int "Max size of string memory allocation"
++    default 64
++    help
++        The maximum size of a supported string.
++
++config LIBCOAP_MAX_STRINGS
++    int "Max number of strings supported"
++    default 16
++    help
++        The maximum number of supported strings.
++
+ config LIBCOAP_MAX_PACKETS
+     int "Max number of packets supported"
+     default 4
+@@ -185,7 +225,7 @@ config LIBCOAP_MAX_PACKETS
+ 
+ config LIBCOAP_MAX_NODES
+     int "Max number of nodes supported"
+-    default 16
++    default 4
+     help
+         The maximum number of supported nodes.
+ 
+@@ -197,7 +237,7 @@ config LIBCOAP_MAX_CONTEXTS
+ 
+ config LIBCOAP_MAX_PDUS
+     int "Max number of PDUs supported"
+-    default 16
++    default 4
+     help
+         The maximum number of supported PDUs.
+ 
+@@ -217,7 +257,7 @@ config LIBCOAP_MAX_OPTION_SIZE
+     int "Max size of option memory allocation"
+     default 16
+     help
+-        The maximum size of a supported options.
++        The maximum size of a supported option.
+ 
+ config LIBCOAP_MAX_OPTIONS
+     int "Max number of options supported"
+@@ -225,34 +265,4 @@ config LIBCOAP_MAX_OPTIONS
+     help
+         The maximum number of supported options.
+ 
+-config LIBCOAP_MAX_CACHE_KEYS
+-    int "Max number of cache keys supported"
+-    default 2
+-    help
+-        The maximum number of supported cache keys.
+-
+-config LIBCOAP_MAX_CACHE_ENTRIES
+-    int "Max number of cache entries supported"
+-    default 2
+-    help
+-        The maximum number of supported cache entries.
+-
+-config LIBCOAP_MAX_LG_CRCVS
+-    int "Max number of client large receives supported"
+-    default 1
+-    help
+-        The maximum number of supported client large receives.
+-
+-config LIBCOAP_MAX_LG_SRCVS
+-    int "Max number of server large receives supported"
+-    default 2
+-    help
+-        The maximum number of supported server large receives.
+-
+-config LIBCOAP_MAX_LG_XMITS
+-    int "Max number of large transmits supported"
+-    default 2
+-    help
+-        The maximum number of supported large trqnsmits.
+-
+ endif # KCONFIG_USEPKG_LIBCOAP
+diff --git a/examples/riot/pkg_libcoap/Makefile b/examples/riot/pkg_libcoap/Makefile
+index a4040402..db2917a5 100644
+--- a/examples/riot/pkg_libcoap/Makefile
++++ b/examples/riot/pkg_libcoap/Makefile
+@@ -1,6 +1,6 @@
+ PKG_NAME=libcoap
+ PKG_URL=https://github.com/obgm/libcoap
+-PKG_VERSION=f67f44516a19ab8e430323c9ee00753a6e191ee1
++PKG_VERSION=adcc8e833404dfdd79a8aceb907a747436fa55ab
+ PKG_LICENSE=BSD-2-Clause
+ 
+ LIBCOAP_BUILD_DIR=$(BINDIR)/pkg/$(PKG_NAME)
+diff --git a/examples/riot/tests_pkg_libcoap/Kconfig b/examples/riot/tests_pkg_libcoap/Kconfig
+new file mode 100644
+index 00000000..5173037e
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/Kconfig
+@@ -0,0 +1,10 @@
++if USEMODULE_LIBCOAP
++config LIBCOAP_USE_PSK
++    string "Secret to use for PSK communications"
++    default "secretPSK"
++    depends on USEMODULE_TINYDTLS
++config LIBCOAP_USE_PSK_ID
++    string "Identifier (user) to use for PSK communications"
++    default "test_user"
++    depends on USEMODULE_TINYDTLS
++endif # USEMODULE_LIBCOAP
+diff --git a/examples/riot/tests_pkg_libcoap/Makefile b/examples/riot/tests_pkg_libcoap/Makefile
+new file mode 100644
+index 00000000..67022acf
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/Makefile
+@@ -0,0 +1,35 @@
++# Include common testing definitions
++include ../Makefile.pkg_common
++
++# This test depends on tap device setup not being set
++PORT=
++
++# Include packages that pull up and auto-init the link layer.
++# NOTE: 6LoWPAN will be included if IEEE802.15.4 devices are present
++USEMODULE += netdev_default
++USEMODULE += auto_init_gnrc_netif
++USEMODULE += gnrc_netif_single
++
++# Additional networking modules that can be dropped if not needed
++USEMODULE += netutils
++
++# Specify the mandatory networking modules for IPv6 and UDP
++USEMODULE += gnrc_ipv6_default
++
++USEMODULE += memarray
++
++# a cryptographically secure implementation of PRNG is needed for tinydtls
++CFLAGS += -DWITH_RIOT_SOCK
++CFLAGS += -DDTLS_PEER_MAX=2 -DDTLS_HANDSHAKE_MAX=2 -DNETQ_MAXCNT=5
++USEPKG += tinydtls
++USEMODULE += prng_sha1prng
++
++# libcoap support
++USEPKG += libcoap
++
++USEMODULE += ztimer64_xtimer_compat
++
++# libcoap needs some space
++CFLAGS += -DTHREAD_STACKSIZE_MAIN=\(3*THREAD_STACKSIZE_DEFAULT\)
++
++include $(RIOTBASE)/Makefile.include
+diff --git a/examples/riot/tests_pkg_libcoap/Makefile.ci b/examples/riot/tests_pkg_libcoap/Makefile.ci
+new file mode 100644
+index 00000000..9e746742
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/Makefile.ci
+@@ -0,0 +1,70 @@
++BOARD_INSUFFICIENT_MEMORY := \
++    airfy-beacon \
++    arduino-duemilanove \
++    arduino-leonardo \
++    arduino-mega2560 \
++    arduino-nano \
++    arduino-uno \
++    atmega256rfr2-xpro \
++    atmega328p \
++    atmega328p-xplained-mini \
++    atmega8 \
++    atxmega-a3bu-xplained \
++    b-l072z-lrwan1 \
++    blackpill-stm32f103c8 \
++    blackpill-stm32f103cb \
++    bluepill-stm32f030c8 \
++    bluepill-stm32f103c8 \
++    bluepill-stm32f103cb \
++    calliope-mini \
++    cc2650-launchpad \
++    cc2650stk \
++    derfmega128 \
++    hifive1 \
++    hifive1b \
++    i-nucleo-lrwan1 \
++    im880b \
++    lsn50 \
++    maple-mini \
++    microbit \
++    microduino-corerf \
++    msb-430 \
++    msb-430h \
++    nrf51dk \
++    nrf51dongle \
++    nrf6310 \
++    nucleo-f030r8 \
++    nucleo-f031k6 \
++    nucleo-f042k6 \
++    nucleo-f070rb \
++    nucleo-f072rb \
++    nucleo-f103rb \
++    nucleo-f302r8 \
++    nucleo-f303k8 \
++    nucleo-f334r8 \
++    nucleo-l011k4 \
++    nucleo-l031k6 \
++    nucleo-l053r8 \
++    nucleo-l073rz \
++    olimex-msp430-h1611 \
++    olimex-msp430-h2618 \
++    opencm904 \
++    samd10-xmini \
++    saml10-xpro \
++    saml11-xpro \
++    samr21-xpro \
++    slstk3400a \
++    spark-core \
++    stk3200 \
++    stm32f030f4-demo \
++    stm32f0discovery \
++    stm32f7508-dk \
++    stm32g0316-disco \
++    stm32l0538-disco \
++    stm32mp157c-dk2 \
++    telosb \
++    waspmote-pro \
++    yunjia-nrf51822 \
++    z1 \
++    zigduino \
++    #
+diff --git a/examples/riot/tests_pkg_libcoap/README.md b/examples/riot/tests_pkg_libcoap/README.md
+new file mode 100644
+index 00000000..0599020e
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/README.md
+@@ -0,0 +1,7 @@
++# libcoap test example
++
++This test is to check that the libcoap client and server logic talk to
++each other.
++
++THe client request generates a CoAP request, which is sent to the server
++who responds back to the client.
+diff --git a/examples/riot/tests_pkg_libcoap/app.config b/examples/riot/tests_pkg_libcoap/app.config
+new file mode 100644
+index 00000000..484fa5d3
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/app.config
+@@ -0,0 +1,13 @@
++CONFIG_LIBCOAP_SERVER_SUPPORT=y
++CONFIG_LIBCOAP_CLIENT_SUPPORT=y
++
++CONFIG_LIBCOAP_USE_PSK="secretPSK"
++CONFIG_LIBCOAP_USE_PSK_ID="test_user"
++
++CONFIG_KCONFIG_USEPKG_LIBCOAP=y
++# Logging levels are defined in pkg/libcoap using Kconfig
++CONFIG_LIBCOAP_LOG_ALERT=y
++
++CONFIG_KCONFIG_USEPKG_TINYDTLS=y
++CONFIG_DTLS_PEER_MAX=2
++CONFIG_DTLS_HANDSHAKE_MAX=2
+diff --git a/examples/riot/tests_pkg_libcoap/libcoap-test.c b/examples/riot/tests_pkg_libcoap/libcoap-test.c
+new file mode 100644
+index 00000000..1519bc74
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/libcoap-test.c
+@@ -0,0 +1,328 @@
++/*
++ * libcoap-test.c -- RIOT example
++ *
++ * Copyright (C) 2023 Jon Shallow <supjps-libcoap@jpshallow.com>
++ *
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * This file is part of the CoAP library libcoap. Please see README for terms
++ * of use.
++ */
++
++#include "coap_config.h"
++#include <coap3/coap.h>
++#include "libcoap-test.h"
++#include <stdio.h>
++#include "macros/utils.h"
++
++#ifdef CONFIG_LIBCOAP_USE_PSK
++#define COAP_USE_PSK CONFIG_LIBCOAP_USE_PSK
++#else /* CONFIG_LIBCOAP_USE_PSK */
++#define COAP_USE_PSK NULL
++#endif /* CONFIG_LIBCOAP_USE_PSK */
++
++#ifdef CONFIG_LIBCOAP_USE_PSK_ID
++#define COAP_USE_PSK_ID CONFIG_LIBCOAP_USE_PSK_ID
++#else /* CONFIG_LIBCOAP_USE_PSK_ID */
++#define COAP_USE_PSK_ID NULL
++#endif /* CONFIG_LIBCOAP_USE_PSK_ID */
++
++static int quit;
++
++#define INDEX "This is a DTLS loopback test client/server made with libcoap\n"
++
++static void
++hnd_get_index(coap_resource_t *resource, coap_session_t  *session,
++             const coap_pdu_t *request, const coap_string_t *query,
++             coap_pdu_t *response)
++{
++    coap_pdu_set_code(response, COAP_RESPONSE_CODE_CONTENT);
++    coap_add_data_large_response(resource, session, request, response,
++                                 query, COAP_MEDIATYPE_TEXT_PLAIN,
++                                 0x7fff, 0, strlen(INDEX),
++                                 (const uint8_t *)INDEX, NULL, NULL);
++}
++
++static void
++init_coap_resources(coap_context_t *ctx)
++{
++    coap_resource_t *r;
++
++    r = coap_resource_init(NULL, 0);
++    if (r == NULL) {
++        goto error;
++    }
++    coap_register_handler(r, COAP_REQUEST_GET, hnd_get_index);
++
++    coap_add_resource(ctx, r);
++
++    return;
++error:
++    coap_log_crit("cannot create resource\n");
++}
++
++static int
++init_coap_endpoints(coap_context_t *ctx, const char *use_psk)
++{
++    char addr_str[INET6_ADDRSTRLEN + 8];
++    int scheme_hint_bits = 1 << COAP_URI_SCHEME_COAP;
++    coap_addr_info_t *info = NULL;
++    coap_addr_info_t *info_list = NULL;
++    coap_str_const_t local;
++    int have_ep = 0;
++
++    if (use_psk && coap_dtls_is_supported()) {
++        coap_dtls_spsk_t setup_data;
++
++        /* Need PSK set up before setting up endpoints */
++        memset(&setup_data, 0, sizeof(setup_data));
++        setup_data.version = COAP_DTLS_SPSK_SETUP_VERSION;
++        setup_data.psk_info.key.s = (const uint8_t *)use_psk;
++        setup_data.psk_info.key.length = strlen(use_psk);
++        coap_context_set_psk2(ctx, &setup_data);
++        scheme_hint_bits |= 1 << COAP_URI_SCHEME_COAPS;
++    }
++
++    local.s = (uint8_t *)"::1";
++    local.length = strlen(addr_str);
++    info_list = coap_resolve_address_info(&local, COAP_DEFAULT_PORT,
++                                          COAPS_DEFAULT_PORT,
++                                          0, 0,
++                                          0,
++                                          scheme_hint_bits,
++                                          COAP_RESOLVE_TYPE_REMOTE);
++    for (info = info_list; info != NULL; info = info->next) {
++        coap_endpoint_t *ep;
++
++        ep = coap_new_endpoint(ctx, &info->addr, info->proto);
++        if (!ep) {
++            coap_log_warn("cannot create endpoint for proto %u\n",
++                          info->proto);
++        }
++        else {
++            have_ep = 1;
++        }
++    }
++    coap_free_address_info(info_list);
++    if (!have_ep) {
++        return 0;
++    }
++
++    return 1;
++}
++
++static int
++coap_server_init(coap_context_t *ctx)
++{
++    if (!init_coap_endpoints(ctx, COAP_USE_PSK)) {
++        return 0;
++    }
++
++    init_coap_resources(ctx);
++    return 1;
++}
++
++static int
++resolve_address(const char *host, const char *service, coap_address_t *dst,
++                int scheme_hint_bits)
++{
++    uint16_t port = service ? atoi(service) : 0;
++    int ret = 0;
++    coap_str_const_t str_host;
++    coap_addr_info_t *addr_info;
++
++    str_host.s = (const uint8_t *)host;
++    str_host.length = strlen(host);
++    addr_info = coap_resolve_address_info(&str_host, port, port,  port, port,
++                                          AF_UNSPEC, scheme_hint_bits,
++                                          COAP_RESOLVE_TYPE_REMOTE);
++    if (addr_info) {
++        ret = 1;
++        *dst = addr_info->addr;
++    }
++
++    coap_free_address_info(addr_info);
++    return ret;
++}
++
++static coap_response_t
++message_handler(coap_session_t *session,
++                const coap_pdu_t *sent,
++                const coap_pdu_t *received,
++                const coap_mid_t id)
++{
++    const uint8_t *data;
++    size_t len;
++    size_t offset;
++    size_t total;
++
++    (void)session;
++    (void)sent;
++    (void)id;
++    if (coap_get_data_large(received, &len, &data, &offset, &total)) {
++        printf("%*.*s", (int)len, (int)len, (const char *)data);
++        if (len + offset == total) {
++            printf("\n");
++            quit = 1;
++        }
++    }
++    return COAP_RESPONSE_OK;
++}
++
++static int
++coap_client_init(coap_context_t *ctx)
++{
++    coap_session_t *session = NULL;
++    coap_pdu_t *pdu;
++    coap_address_t dst;
++    coap_mid_t mid;
++    int len;
++    coap_uri_t uri;
++    char portbuf[8];
++    coap_optlist_t *optlist = NULL;
++
++#define BUFSIZE 100
++    unsigned char buf[BUFSIZE];
++    int res;
++    const char *coap_uri = "coaps://[::1]";
++
++    /* Parse the URI */
++    len = coap_split_uri((const unsigned char *)coap_uri, strlen(coap_uri), &uri);
++    if (len != 0) {
++        coap_log_warn("Failed to parse uri %s\n", coap_uri);
++        goto fail;
++    }
++
++    snprintf(portbuf, sizeof(portbuf), "%d", uri.port);
++    snprintf((char *)buf, sizeof(buf), "%*.*s", (int)uri.host.length,
++             (int)uri.host.length, (const char *)uri.host.s);
++    /* resolve destination address where packet should be sent */
++    len = resolve_address((const char *)buf, portbuf, &dst, 1 << uri.scheme);
++    if (len <= 0) {
++        coap_log_warn("Failed to resolve address %*.*s\n", (int)uri.host.length,
++                      (int)uri.host.length, (const char *)uri.host.s);
++        goto fail;
++    }
++
++
++    if (uri.scheme == COAP_URI_SCHEME_COAP) {
++        session = coap_new_client_session(ctx, NULL, &dst,
++                                          COAP_PROTO_UDP);
++    }
++    else if (uri.scheme == COAP_URI_SCHEME_COAP_TCP) {
++        goto fail;
++    }
++    else if (uri.scheme == COAP_URI_SCHEME_COAPS_TCP) {
++        goto fail;
++    }
++    else if (uri.scheme == COAP_URI_SCHEME_COAPS) {
++#if defined (COAP_USE_PSK) && defined(COAP_USE_PSK_ID)
++        static coap_dtls_cpsk_t dtls_psk;
++        static char client_sni[256];
++
++        memset(client_sni, 0, sizeof(client_sni));
++        memset(&dtls_psk, 0, sizeof(dtls_psk));
++        dtls_psk.version = COAP_DTLS_CPSK_SETUP_VERSION;
++        if (uri.host.length) {
++            memcpy(client_sni, uri.host.s,
++                   MIN(uri.host.length, sizeof(client_sni) - 1));
++        }
++        else {
++            memcpy(client_sni, "localhost", 9);
++        }
++        dtls_psk.client_sni = client_sni;
++        dtls_psk.psk_info.identity.s = (const uint8_t *)COAP_USE_PSK_ID;
++        dtls_psk.psk_info.identity.length = strlen(COAP_USE_PSK_ID);
++        dtls_psk.psk_info.key.s = (const uint8_t *)COAP_USE_PSK;
++        dtls_psk.psk_info.key.length = strlen(COAP_USE_PSK);
++
++        session = coap_new_client_session_psk2(ctx, NULL, &dst,
++                                               COAP_PROTO_DTLS, &dtls_psk);
++#else /* ! COAP_USE_PSK && ! COAP_USE_PSK_ID */
++        coap_log_err("CONFIG_LIBCOAP_USE_PSK and CONFIG_LIBCOAP_USE_PSK_ID not defined\n");
++        goto fail;
++#endif /* ! COAP_USE_PSK && ! COAP_USE_PSK_ID */
++    }
++
++    if (!session) {
++        coap_log_warn("Failed to create session\n");
++        goto fail;
++    }
++
++    coap_register_response_handler(ctx, message_handler);
++
++    /* construct CoAP message */
++    pdu = coap_pdu_init(COAP_MESSAGE_CON,
++                        COAP_REQUEST_CODE_GET,
++                        coap_new_message_id(session),
++                        coap_session_max_pdu_size(session));
++    if (!pdu) {
++        coap_log_warn("Failed to create PDU\n");
++        goto fail;
++    }
++
++    len = coap_uri_into_options(&uri, &dst, &optlist, 1, buf, sizeof(buf));
++    if (len) {
++        coap_log_warn("Failed to create options\n");
++        goto fail;
++    }
++
++    /* Add option list (which will be sorted) to the PDU */
++    if (optlist) {
++        res = coap_add_optlist_pdu(pdu, &optlist);
++        if (res != 1) {
++            coap_log_warn("Failed to add options to PDU\n");
++            goto fail;
++        }
++    }
++
++    /* and send the PDU */
++    mid = coap_send(session, pdu);
++    if (mid == COAP_INVALID_MID) {
++        coap_log_warn("Failed to send PDU\n");
++        goto fail;
++    }
++    coap_delete_optlist(optlist);
++    return 1;
++
++fail:
++    coap_delete_optlist(optlist);
++    return 0;
++}
++
++void
++libcoap_test_run(void)
++{
++    coap_context_t *coap_context;
++
++    /* Initialize libcoap library */
++    coap_startup();
++
++    coap_set_log_level(COAP_MAX_LOGGING_LEVEL);
++
++    coap_context = coap_new_context(NULL);
++    if (!coap_context) {
++        goto fail;
++    }
++    coap_context_set_block_mode(coap_context, COAP_BLOCK_USE_LIBCOAP);
++
++    /* Set up server logic */
++    coap_server_init(coap_context);
++    coap_log_info("libcoap test server ready\n");
++
++    /* Set up and initiate client logic */
++    coap_client_init(coap_context);
++    coap_log_info("libcoap test client started\n");
++
++    /* Keep on processing until response is back in ... */
++    while (quit == 0) {
++        coap_io_process(coap_context, 1000);
++    }
++fail:
++    /* Clean up library usage so client can be run again */
++    coap_free_context(coap_context);
++
++    coap_cleanup();
++    coap_log_info("libcoap test stopped\n");
++    return;
++}
+diff --git a/examples/riot/tests_pkg_libcoap/libcoap-test.h b/examples/riot/tests_pkg_libcoap/libcoap-test.h
+new file mode 100644
+index 00000000..76b8721a
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/libcoap-test.h
+@@ -0,0 +1,29 @@
++/*
++ * libcoap-test.h -- RIOT client example
++ *
++ * Copyright (C) 2023 Jon Shallow <supjps-libcoap@jpshallow.com>
++ *
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * This file is part of the CoAP library libcoap. Please see README for terms
++ * of use.
++ */
++
++#ifndef LIBCOAP_TEST_H
++#define LIBCOAP_TEST_H
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#include "coap_config.h"
++#include <coap3/coap.h>
++
++/* Start up the CoAP Server */
++void libcoap_test_run(void);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* LIBCOAP_TEST_H */
+diff --git a/examples/riot/tests_pkg_libcoap/main.c b/examples/riot/tests_pkg_libcoap/main.c
+new file mode 100644
+index 00000000..48b8254c
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/main.c
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (C) 2015 Freie Universität Berlin
++ * Copyright (C) 2018 Inria
++ *
++ * This file is subject to the terms and conditions of the GNU Lesser
++ * General Public License v2.1. See the file LICENSE in the top level
++ * directory for more details.
++ */
++
++/**
++ * @ingroup     examples
++ * @{
++ *
++ * @file
++ * @brief       Example test application for libcoap
++ *
++ * @author      Raul Fuentes <>
++ *
++ * @}
++ */
++
++#include <stdio.h>
++
++#include "shell.h"
++#include "msg.h"
++
++#include "libcoap-test.h"
++#include "coap3/coap.h"
++
++#define MAIN_QUEUE_SIZE     (8)
++static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
++
++int
++main(void)
++{
++    /* we need a message queue for the thread running the shell in order to
++     * receive potentially fast incoming networking packets */
++    msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
++
++    libcoap_test_run();
++
++    return 0;
++}
+diff --git a/examples/riot/tests_pkg_libcoap/tests/01-run.py b/examples/riot/tests_pkg_libcoap/tests/01-run.py
+new file mode 100755
+index 00000000..57ff7858
+--- /dev/null
++++ b/examples/riot/tests_pkg_libcoap/tests/01-run.py
+@@ -0,0 +1,18 @@
++#!/usr/bin/env python3
++
++#  Copyright (C) 2020 Otto-von-Guericke-Universität Magdeburg
++#
++# This file is subject to the terms and conditions of the GNU Lesser
++# General Public License v2.1. See the file LICENSE in the top level
++# directory for more details.
++
++import sys
++from testrunner import run
++
++
++def testfunc(child):
++    child.expect_exact("This is a DTLS loopback test client/server made with libcoap\r\n")
++
++
++if __name__ == "__main__":
++    sys.exit(run(testfunc))
+diff --git a/include/coap3/coap_debug.h b/include/coap3/coap_debug.h
+index 496eebc1..debf76b3 100644
+--- a/include/coap3/coap_debug.h
++++ b/include/coap3/coap_debug.h
+@@ -282,7 +282,7 @@ void coap_print_contiki_prefix(coap_log_t level);
+  * @param level One of the COAP_LOG_* values.
+  */
+ #define coap_log(level, ...) do { \
+-    if ((int)((level))<=(int)coap_get_log_level()) \
++    if ((level) < (coap_get_log_level() + 1)) \
+       coap_log_impl((level), __VA_ARGS__); \
+   } while(0)
+ #endif /* !WITH_CONTIKI */
+diff --git a/include/coap3/coap_pdu.h b/include/coap3/coap_pdu.h
+index 2afa1c66..c8ecb162 100644
+--- a/include/coap3/coap_pdu.h
++++ b/include/coap3/coap_pdu.h
+@@ -54,7 +54,11 @@
+ 
+ /* Extended Token constants */
+ #define COAP_TOKEN_DEFAULT_MAX 8
+-#define COAP_TOKEN_EXT_MAX 65804 /* 13 + 256 + 65535 */
++#if (UINT_MAX > 65804UL)
++#define COAP_TOKEN_EXT_MAX 65804UL /* 13 + 256 + 65535 */
++#else /* UINT_MAX < 65804UL */
++#define COAP_TOKEN_EXT_MAX 4096
++#endif /* UINT_MAX < 65804UL */
+ 
+ /* CoAP message types */
+ 
+@@ -141,7 +145,11 @@ typedef enum coap_request_t {
+ #define COAP_OPTION_NORESPONSE    258 /* _U-_E_U, uint,      0-1 B, RFC7967 */
+ #define COAP_OPTION_RTAG          292 /* ___RE_U, opaque,    0-8 B, RFC9175 */
+ 
++#if (UINT_MAX > 65535)
+ #define COAP_MAX_OPT            65535 /**< the highest option number we know */
++#else /* UINT_MAX <= 65535 */
++#define COAP_MAX_OPT            65534 /**< the highest option number we know */
++#endif /* UINT_MAX <= 65535 */
+ 
+ /* CoAP result codes (HTTP-Code / 100 * 40 + HTTP-Code % 100) */
+ 
+diff --git a/include/coap3/coap_pdu_internal.h b/include/coap3/coap_pdu_internal.h
+index b8b6b08f..f112ac21 100644
+--- a/include/coap3/coap_pdu_internal.h
++++ b/include/coap3/coap_pdu_internal.h
+@@ -23,6 +23,14 @@
+ #include <lwip/pbuf.h>
+ #endif
+ 
++#ifdef RIOT_VERSION
++#include <limits.h>
++#endif /* RIOT_VERSION */
++
++#ifdef HAVE_LIMITS_H
++#include <limits.h>
++#endif /* HAVE_LIMITS_H */
++
+ #include <stdint.h>
+ 
+ /**
+@@ -70,6 +78,10 @@
+ #define COAP_DEFAULT_MAX_PDU_RX_SIZE (COAP_MAX_MESSAGE_SIZE_TCP16+4UL)
+ #elif defined(WITH_CONTIKI)
+ #define COAP_DEFAULT_MAX_PDU_RX_SIZE (sizeof(coap_packet_t) + UIP_APPDATA_SIZE)
++#elif (UINT_MAX < (8UL*1024*1024+256))
++#define COAP_DEFAULT_MAX_PDU_RX_SIZE (1500UL)
++#elif defined(RIOT_VERSION) && defined(COAP_DISABLE_TCP)
++#define COAP_DEFAULT_MAX_PDU_RX_SIZE (1500UL)
+ #else
+ /* 8 MiB max-message-size plus some space for options */
+ #define COAP_DEFAULT_MAX_PDU_RX_SIZE (8UL*1024*1024+256)
+diff --git a/include/coap3/coap_resource.h b/include/coap3/coap_resource.h
+index 1861d668..f94450dc 100644
+--- a/include/coap3/coap_resource.h
++++ b/include/coap3/coap_resource.h
+@@ -455,12 +455,13 @@ coap_str_const_t *coap_attr_get_value(coap_attr_t *attribute);
+  * COAP_PRINT_STATUS_TRUNC indicates that the output is truncated, i.e. the
+  * printing would have exceeded the current buffer.
+  */
+-typedef unsigned int coap_print_status_t;
++typedef uint32_t coap_print_status_t;
+ 
+-#define COAP_PRINT_STATUS_MASK  0xF0000000u
+-#define COAP_PRINT_OUTPUT_LENGTH(v) ((v) & ~COAP_PRINT_STATUS_MASK)
+-#define COAP_PRINT_STATUS_ERROR 0x80000000u
+-#define COAP_PRINT_STATUS_TRUNC 0x40000000u
++#define COAP_PRINT_STATUS_MASK  0xF0000000UL
++#define COAP_PRINT_STATUS_MAX   0x0FFFFFFFUL
++#define COAP_PRINT_OUTPUT_LENGTH(v) ((v) & COAP_PRINT_STATUS_MAX)
++#define COAP_PRINT_STATUS_ERROR 0x80000000UL
++#define COAP_PRINT_STATUS_TRUNC 0x40000000UL
+ 
+ /**
+  * Writes a description of this resource in link-format to given text buffer. @p
+diff --git a/include/coap3/coap_session_internal.h b/include/coap3/coap_session_internal.h
+index f634355e..b0a6710e 100644
+--- a/include/coap3/coap_session_internal.h
++++ b/include/coap3/coap_session_internal.h
+@@ -200,7 +200,7 @@ struct coap_session_t {
+ #endif /* COAP_WS_SUPPORT */
+   volatile uint8_t max_token_checked; /**< Check for max token size
+                                            coap_ext_token_check_t */
+-  uint16_t remote_test_mid;       /**< mid used for checking remote
++  coap_mid_t remote_test_mid;     /**< mid used for checking remote
+                                        support */
+   uint32_t max_token_size;        /**< Largest token size supported RFC8974 */
+   uint64_t tx_token;              /**< Next token number to use */
+diff --git a/include/coap3/coap_uthash_internal.h b/include/coap3/coap_uthash_internal.h
+index 9a396b61..6bf1fffa 100644
+--- a/include/coap3/coap_uthash_internal.h
++++ b/include/coap3/coap_uthash_internal.h
+@@ -139,7 +139,7 @@ do {
+ #define HASH_ROLLBACK_BKT(hh, head, itemptrhh)                                   \
+ do {                                                                             \
+   struct UT_hash_handle *_hd_hh_item = (itemptrhh);                              \
+-  unsigned _hd_bkt;                                                              \
++  uint32_t _hd_bkt;                                                              \
+   HASH_TO_BKT(_hd_hh_item->hashv, (head)->hh.tbl->num_buckets, _hd_bkt);         \
+   (head)->hh.tbl->buckets[_hd_bkt].count++;                                      \
+   _hd_hh_item->hh_next = NULL;                                                   \
+@@ -155,7 +155,7 @@ do {
+ do {                                                                             \
+   (out) = NULL;                                                                  \
+   if (head) {                                                                    \
+-    unsigned _hf_bkt;                                                            \
++    uint32_t _hf_bkt;                                                            \
+     HASH_TO_BKT(hashval, (head)->hh.tbl->num_buckets, _hf_bkt);                  \
+     if (HASH_BLOOM_TEST((head)->hh.tbl, hashval) != 0) {                         \
+       HASH_FIND_IN_BKT((head)->hh.tbl, hh, (head)->hh.tbl->buckets[ _hf_bkt ], keyptr, keylen, hashval, out); \
+@@ -167,7 +167,7 @@ do {
+ do {                                                                             \
+   (out) = NULL;                                                                  \
+   if (head) {                                                                    \
+-    unsigned _hf_hashv;                                                          \
++    uint32_t _hf_hashv;                                                          \
+     HASH_VALUE(keyptr, keylen, _hf_hashv);                                       \
+     HASH_FIND_BYHASHVALUE(hh, head, keyptr, keylen, _hf_hashv, out);             \
+   }                                                                              \
+@@ -264,14 +264,14 @@ do {
+ 
+ #define HASH_REPLACE(hh,head,fieldname,keylen_in,add,replaced)                   \
+ do {                                                                             \
+-  unsigned _hr_hashv;                                                            \
++  uint32_t _hr_hashv;                                                            \
+   HASH_VALUE(&((add)->fieldname), keylen_in, _hr_hashv);                         \
+   HASH_REPLACE_BYHASHVALUE(hh, head, fieldname, keylen_in, _hr_hashv, add, replaced); \
+ } while (0)
+ 
+ #define HASH_REPLACE_INORDER(hh,head,fieldname,keylen_in,add,replaced,cmpfcn)    \
+ do {                                                                             \
+-  unsigned _hr_hashv;                                                            \
++  uint32_t _hr_hashv;                                                            \
+   HASH_VALUE(&((add)->fieldname), keylen_in, _hr_hashv);                         \
+   HASH_REPLACE_BYHASHVALUE_INORDER(hh, head, fieldname, keylen_in, _hr_hashv, add, replaced, cmpfcn); \
+ } while (0)
+@@ -314,7 +314,7 @@ do {
+ #define HASH_ADD_TO_TABLE(hh,head,keyptr,keylen_in,hashval,add,oomed)            \
+ do {                                                                             \
+   if (!(oomed)) {                                                                \
+-    unsigned _ha_bkt;                                                            \
++    uint32_t _ha_bkt;                                                            \
+     (head)->hh.tbl->num_items++;                                                 \
+     HASH_TO_BKT(hashval, (head)->hh.tbl->num_buckets, _ha_bkt);                  \
+     HASH_ADD_TO_BKT((head)->hh.tbl->buckets[_ha_bkt], hh, &(add)->hh, oomed);    \
+@@ -337,7 +337,7 @@ do {
+ 
+ #define HASH_ADD_TO_TABLE(hh,head,keyptr,keylen_in,hashval,add,oomed)            \
+ do {                                                                             \
+-  unsigned _ha_bkt;                                                              \
++  uint32_t _ha_bkt;                                                              \
+   (head)->hh.tbl->num_items++;                                                   \
+   HASH_TO_BKT(hashval, (head)->hh.tbl->num_buckets, _ha_bkt);                    \
+   HASH_ADD_TO_BKT((head)->hh.tbl->buckets[_ha_bkt], hh, &(add)->hh, oomed);      \
+@@ -353,7 +353,7 @@ do {
+   IF_HASH_NONFATAL_OOM( int _ha_oomed = 0; )                                     \
+   (add)->hh.hashv = (hashval);                                                   \
+   (add)->hh.key = (char*) (keyptr);                                              \
+-  (add)->hh.keylen = (unsigned) (keylen_in);                                     \
++  (add)->hh.keylen = (uint32_t) (keylen_in);                                     \
+   if (!(head)) {                                                                 \
+     (add)->hh.next = NULL;                                                       \
+     (add)->hh.prev = NULL;                                                       \
+@@ -383,7 +383,7 @@ do {
+ 
+ #define HASH_ADD_KEYPTR_INORDER(hh,head,keyptr,keylen_in,add,cmpfcn)             \
+ do {                                                                             \
+-  unsigned _hs_hashv;                                                            \
++  uint32_t _hs_hashv;                                                            \
+   HASH_VALUE(keyptr, keylen_in, _hs_hashv);                                      \
+   HASH_ADD_KEYPTR_BYHASHVALUE_INORDER(hh, head, keyptr, keylen_in, _hs_hashv, add, cmpfcn); \
+ } while (0)
+@@ -399,7 +399,7 @@ do {
+   IF_HASH_NONFATAL_OOM( int _ha_oomed = 0; )                                     \
+   (add)->hh.hashv = (hashval);                                                   \
+   (add)->hh.key = (const void*) (keyptr);                                        \
+-  (add)->hh.keylen = (unsigned) (keylen_in);                                     \
++  (add)->hh.keylen = (uint32_t) (keylen_in);                                     \
+   if (!(head)) {                                                                 \
+     (add)->hh.next = NULL;                                                       \
+     (add)->hh.prev = NULL;                                                       \
+@@ -417,7 +417,7 @@ do {
+ 
+ #define HASH_ADD_KEYPTR(hh,head,keyptr,keylen_in,add)                            \
+ do {                                                                             \
+-  unsigned _ha_hashv;                                                            \
++  uint32_t _ha_hashv;                                                            \
+   HASH_VALUE(keyptr, keylen_in, _ha_hashv);                                      \
+   HASH_ADD_KEYPTR_BYHASHVALUE(hh, head, keyptr, keylen_in, _ha_hashv, add);      \
+ } while (0)
+@@ -458,7 +458,7 @@ do {
+     uthash_free((head)->hh.tbl, sizeof(UT_hash_table));                          \
+     (head) = NULL;                                                               \
+   } else {                                                                       \
+-    unsigned _hd_bkt;                                                            \
++    uint32_t _hd_bkt;                                                            \
+     if (_hd_hh_del == (head)->hh.tbl->tail) {                                    \
+       (head)->hh.tbl->tail = HH_FROM_ELMT((head)->hh.tbl, _hd_hh_del->prev);     \
+     }                                                                            \
+@@ -480,17 +480,17 @@ do {
+ /* convenience forms of HASH_FIND/HASH_ADD/HASH_DEL */
+ #define HASH_FIND_STR(head,findstr,out)                                          \
+ do {                                                                             \
+-    unsigned _uthash_hfstr_keylen = (unsigned)uthash_strlen(findstr);            \
++    uint32_t _uthash_hfstr_keylen = (uint32_t)uthash_strlen(findstr);            \
+     HASH_FIND(hh, head, findstr, _uthash_hfstr_keylen, out);                     \
+ } while (0)
+ #define HASH_ADD_STR(head,strfield,add)                                          \
+ do {                                                                             \
+-    unsigned _uthash_hastr_keylen = (unsigned)uthash_strlen((add)->strfield);    \
++    uint32_t _uthash_hastr_keylen = (uint32_t)uthash_strlen((add)->strfield);    \
+     HASH_ADD(hh, head, strfield[0], _uthash_hastr_keylen, add);                  \
+ } while (0)
+ #define HASH_REPLACE_STR(head,strfield,add,replaced)                             \
+ do {                                                                             \
+-    unsigned _uthash_hrstr_keylen = (unsigned)uthash_strlen((add)->strfield);    \
++    uint32_t _uthash_hrstr_keylen = (uint32_t)uthash_strlen((add)->strfield);    \
+     HASH_REPLACE(hh, head, strfield[0], _uthash_hrstr_keylen, add, replaced);    \
+ } while (0)
+ #define HASH_FIND_INT(head,findint,out)                                          \
+@@ -518,11 +518,11 @@ do {
+ do {                                                                             \
+   struct UT_hash_handle *_thh;                                                   \
+   if (head) {                                                                    \
+-    unsigned _bkt_i;                                                             \
+-    unsigned _count = 0;                                                         \
++    uint32_t _bkt_i;                                                             \
++    uint32_t _count = 0;                                                         \
+     char *_prev;                                                                 \
+     for (_bkt_i = 0; _bkt_i < (head)->hh.tbl->num_buckets; ++_bkt_i) {           \
+-      unsigned _bkt_count = 0;                                                   \
++      uint32_t _bkt_count = 0;                                                   \
+       _thh = (head)->hh.tbl->buckets[_bkt_i].hh_head;                            \
+       _prev = NULL;                                                              \
+       while (_thh) {                                                             \
+@@ -572,7 +572,7 @@ do {
+ #ifdef HASH_EMIT_KEYS
+ #define HASH_EMIT_KEY(hh,head,keyptr,fieldlen)                                   \
+ do {                                                                             \
+-  unsigned _klen = fieldlen;                                                     \
++  uint32_t _klen = fieldlen;                                                     \
+   write(HASH_EMIT_KEYS, &_klen, sizeof(_klen));                                  \
+   write(HASH_EMIT_KEYS, keyptr, (unsigned long)fieldlen);                        \
+ } while (0)
+@@ -583,7 +583,7 @@ do {
+ /* The Bernstein hash function, used in Perl prior to v5.6. Note (x<<5+x)=x*33. */
+ #define HASH_BER(key,keylen,hashv)                                               \
+ do {                                                                             \
+-  unsigned _hb_keylen = (unsigned)keylen;                                        \
++  uint32_t _hb_keylen = (uint32_t)keylen;                                        \
+   const unsigned char *_hb_key = (const unsigned char*)(key);                    \
+   (hashv) = 0;                                                                   \
+   while (_hb_keylen-- != 0U) {                                                   \
+@@ -596,7 +596,7 @@ do {
+  * http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx */
+ #define HASH_SAX(key,keylen,hashv)                                               \
+ do {                                                                             \
+-  unsigned _sx_i;                                                                \
++  uint32_t _sx_i;                                                                \
+   const unsigned char *_hs_key = (const unsigned char*)(key);                    \
+   hashv = 0;                                                                     \
+   for (_sx_i=0; _sx_i < keylen; _sx_i++) {                                       \
+@@ -606,7 +606,7 @@ do {
+ /* FNV-1a variation */
+ #define HASH_FNV(key,keylen,hashv)                                               \
+ do {                                                                             \
+-  unsigned _fn_i;                                                                \
++  uint32_t _fn_i;                                                                \
+   const unsigned char *_hf_key = (const unsigned char*)(key);                    \
+   (hashv) = 2166136261U;                                                         \
+   for (_fn_i=0; _fn_i < keylen; _fn_i++) {                                       \
+@@ -617,7 +617,7 @@ do {
+ 
+ #define HASH_OAT(key,keylen,hashv)                                               \
+ do {                                                                             \
+-  unsigned _ho_i;                                                                \
++  uint32_t _ho_i;                                                                \
+   const unsigned char *_ho_key=(const unsigned char*)(key);                      \
+   hashv = 0;                                                                     \
+   for(_ho_i=0; _ho_i < keylen; _ho_i++) {                                        \
+@@ -645,39 +645,39 @@ do {
+ 
+ #define HASH_JEN(key,keylen,hashv)                                               \
+ do {                                                                             \
+-  unsigned _hj_i,_hj_j,_hj_k;                                                    \
++  uint32_t _hj_i,_hj_j,_hj_k;                                                    \
+   unsigned const char *_hj_key=(unsigned const char*)(key);                      \
+   hashv = 0xfeedbeefu;                                                           \
+   _hj_i = _hj_j = 0x9e3779b9u;                                                   \
+-  _hj_k = (unsigned)(keylen);                                                    \
++  _hj_k = (uint32_t)(keylen);                                                    \
+   while (_hj_k >= 12U) {                                                         \
+-    _hj_i +=    (_hj_key[0] + ( (unsigned)_hj_key[1] << 8 )                      \
+-        + ( (unsigned)_hj_key[2] << 16 )                                         \
+-        + ( (unsigned)_hj_key[3] << 24 ) );                                      \
+-    _hj_j +=    (_hj_key[4] + ( (unsigned)_hj_key[5] << 8 )                      \
+-        + ( (unsigned)_hj_key[6] << 16 )                                         \
+-        + ( (unsigned)_hj_key[7] << 24 ) );                                      \
+-    hashv += (_hj_key[8] + ( (unsigned)_hj_key[9] << 8 )                         \
+-        + ( (unsigned)_hj_key[10] << 16 )                                        \
+-        + ( (unsigned)_hj_key[11] << 24 ) );                                     \
++    _hj_i +=    (_hj_key[0] + ( (uint32_t)_hj_key[1] << 8 )                      \
++        + ( (uint32_t)_hj_key[2] << 16 )                                         \
++        + ( (uint32_t)_hj_key[3] << 24 ) );                                      \
++    _hj_j +=    (_hj_key[4] + ( (uint32_t)_hj_key[5] << 8 )                      \
++        + ( (uint32_t)_hj_key[6] << 16 )                                         \
++        + ( (uint32_t)_hj_key[7] << 24 ) );                                      \
++    hashv += (_hj_key[8] + ( (uint32_t)_hj_key[9] << 8 )                         \
++        + ( (uint32_t)_hj_key[10] << 16 )                                        \
++        + ( (uint32_t)_hj_key[11] << 24 ) );                                     \
+                                                                                  \
+      HASH_JEN_MIX(_hj_i, _hj_j, hashv);                                          \
+                                                                                  \
+      _hj_key += 12;                                                              \
+      _hj_k -= 12U;                                                               \
+   }                                                                              \
+-  hashv += (unsigned)(keylen);                                                   \
++  hashv += (uint32_t)(keylen);                                                   \
+   switch ( _hj_k ) {                                                             \
+-    case 11: hashv += ( (unsigned)_hj_key[10] << 24 ); /* FALLTHROUGH */         \
+-    case 10: hashv += ( (unsigned)_hj_key[9] << 16 );  /* FALLTHROUGH */         \
+-    case 9:  hashv += ( (unsigned)_hj_key[8] << 8 );   /* FALLTHROUGH */         \
+-    case 8:  _hj_j += ( (unsigned)_hj_key[7] << 24 );  /* FALLTHROUGH */         \
+-    case 7:  _hj_j += ( (unsigned)_hj_key[6] << 16 );  /* FALLTHROUGH */         \
+-    case 6:  _hj_j += ( (unsigned)_hj_key[5] << 8 );   /* FALLTHROUGH */         \
++    case 11: hashv += ( (uint32_t)_hj_key[10] << 24 ); /* FALLTHROUGH */         \
++    case 10: hashv += ( (uint32_t)_hj_key[9] << 16 );  /* FALLTHROUGH */         \
++    case 9:  hashv += ( (uint32_t)_hj_key[8] << 8 );   /* FALLTHROUGH */         \
++    case 8:  _hj_j += ( (uint32_t)_hj_key[7] << 24 );  /* FALLTHROUGH */         \
++    case 7:  _hj_j += ( (uint32_t)_hj_key[6] << 16 );  /* FALLTHROUGH */         \
++    case 6:  _hj_j += ( (uint32_t)_hj_key[5] << 8 );   /* FALLTHROUGH */         \
+     case 5:  _hj_j += _hj_key[4];                      /* FALLTHROUGH */         \
+-    case 4:  _hj_i += ( (unsigned)_hj_key[3] << 24 );  /* FALLTHROUGH */         \
+-    case 3:  _hj_i += ( (unsigned)_hj_key[2] << 16 );  /* FALLTHROUGH */         \
+-    case 2:  _hj_i += ( (unsigned)_hj_key[1] << 8 );   /* FALLTHROUGH */         \
++    case 4:  _hj_i += ( (uint32_t)_hj_key[3] << 24 );  /* FALLTHROUGH */         \
++    case 3:  _hj_i += ( (uint32_t)_hj_key[2] << 16 );  /* FALLTHROUGH */         \
++    case 2:  _hj_i += ( (uint32_t)_hj_key[1] << 8 );   /* FALLTHROUGH */         \
+     case 1:  _hj_i += _hj_key[0];                      /* FALLTHROUGH */         \
+     default: ;                                                                   \
+   }                                                                              \
+@@ -700,7 +700,7 @@ do {
+   unsigned const char *_sfh_key=(unsigned const char*)(key);                     \
+   uint32_t _sfh_tmp, _sfh_len = (uint32_t)keylen;                                \
+                                                                                  \
+-  unsigned _sfh_rem = _sfh_len & 3U;                                             \
++  uint32_t _sfh_rem = _sfh_len & 3U;                                             \
+   _sfh_len >>= 2;                                                                \
+   hashv = 0xcafebabeu;                                                           \
+                                                                                  \
+@@ -831,8 +831,8 @@ do {
+  */
+ #define HASH_EXPAND_BUCKETS(hh,tbl,oomed)                                        \
+ do {                                                                             \
+-  unsigned _he_bkt;                                                              \
+-  unsigned _he_bkt_i;                                                            \
++  uint32_t _he_bkt;                                                              \
++  uint32_t _he_bkt_i;                                                            \
+   struct UT_hash_handle *_he_thh, *_he_hh_nxt;                                   \
+   UT_hash_bucket *_he_new_buckets, *_he_newbkt;                                  \
+   _he_new_buckets = (UT_hash_bucket*)uthash_malloc(                              \
+@@ -888,8 +888,8 @@ do {
+ #define HASH_SORT(head,cmpfcn) HASH_SRT(hh,head,cmpfcn)
+ #define HASH_SRT(hh,head,cmpfcn)                                                 \
+ do {                                                                             \
+-  unsigned _hs_i;                                                                \
+-  unsigned _hs_looping,_hs_nmerges,_hs_insize,_hs_psize,_hs_qsize;               \
++  uint32_t _hs_i;                                                                \
++  uint32_t _hs_looping,_hs_nmerges,_hs_insize,_hs_psize,_hs_qsize;               \
+   struct UT_hash_handle *_hs_p, *_hs_q, *_hs_e, *_hs_list, *_hs_tail;            \
+   if (head != NULL) {                                                            \
+     _hs_insize = 1;                                                              \
+@@ -977,7 +977,7 @@ do {
+  * hash handle that must be present in the structure. */
+ #define HASH_SELECT(hh_dst, dst, hh_src, src, cond)                              \
+ do {                                                                             \
+-  unsigned _src_bkt, _dst_bkt;                                                   \
++  uint32_t _src_bkt, _dst_bkt;                                                   \
+   void *_last_elt = NULL, *_elt;                                                 \
+   UT_hash_handle *_src_hh, *_dst_hh, *_last_elt_hh=NULL;                         \
+   ptrdiff_t _dst_hho = ((char*)(&(dst)->hh_dst) - (char*)(dst));                 \
+@@ -1067,7 +1067,7 @@ for(((el)=(head)), ((tmp)=DECLTYPE(el)((head!=NULL)?(head)->hh.next:NULL));
+ 
+ typedef struct UT_hash_bucket {
+    struct UT_hash_handle *hh_head;
+-   unsigned count;
++   uint32_t count;
+ 
+    /* expand_mult is normally set to 0. In this situation, the max chain length
+     * threshold is enforced at its default value, HASH_BKT_CAPACITY_THRESH. (If
+@@ -1081,7 +1081,7 @@ typedef struct UT_hash_bucket {
+     * It is better to let its chain length grow to a longer yet-still-bounded
+     * value, than to do an O(n) bucket expansion too often.
+     */
+-   unsigned expand_mult;
++   uint32_t expand_mult;
+ 
+ } UT_hash_bucket;
+ 
+@@ -1091,19 +1091,19 @@ typedef struct UT_hash_bucket {
+ 
+ typedef struct UT_hash_table {
+    UT_hash_bucket *buckets;
+-   unsigned num_buckets, log2_num_buckets;
+-   unsigned num_items;
++   uint32_t num_buckets, log2_num_buckets;
++   uint32_t num_items;
+    struct UT_hash_handle *tail; /* tail hh in app order, for fast append    */
+    ptrdiff_t hho; /* hash handle offset (byte pos of hash handle in element */
+ 
+    /* in an ideal situation (all buckets used equally), no bucket would have
+     * more than ceil(#items/#buckets) items. that's the ideal chain length. */
+-   unsigned ideal_chain_maxlen;
++   uint32_t ideal_chain_maxlen;
+ 
+    /* nonideal_items is the number of items in the hash whose chain position
+     * exceeds the ideal chain maxlen. these items pay the penalty for an uneven
+     * hash distribution; reaching them in a chain traversal takes >ideal steps */
+-   unsigned nonideal_items;
++   uint32_t nonideal_items;
+ 
+    /* ineffective expands occur when a bucket doubling was performed, but
+     * afterward, more than half the items in the hash had nonideal chain
+@@ -1111,7 +1111,7 @@ typedef struct UT_hash_table {
+     * further expansion, as it's not helping; this happens when the hash
+     * function isn't a good fit for the key domain. When expansion is inhibited
+     * the hash will still work, albeit no longer in constant time. */
+-   unsigned ineff_expands, noexpand;
++   uint32_t ineff_expands, noexpand;
+ 
+    uint32_t signature; /* used only to find hash tables in external analysis */
+ #ifdef HASH_BLOOM
+@@ -1129,8 +1129,8 @@ typedef struct UT_hash_handle {
+    struct UT_hash_handle *hh_prev;   /* previous hh in bucket order    */
+    struct UT_hash_handle *hh_next;   /* next hh in bucket order        */
+    const void *key;                  /* ptr to enclosing struct's key  */
+-   unsigned keylen;                  /* enclosing struct's key len     */
+-   unsigned hashv;                   /* result of hash-fcn(key)        */
++   uint32_t keylen;                  /* enclosing struct's key len     */
++   uint32_t hashv;                   /* result of hash-fcn(key)        */
+ } UT_hash_handle;
+ 
+ #endif /* UTHASH_H */
+diff --git a/src/coap_address.c b/src/coap_address.c
+index 48c2dfb9..8108a1cd 100644
+--- a/src/coap_address.c
++++ b/src/coap_address.c
+@@ -380,6 +380,109 @@ coap_get_available_scheme_hint_bits(int have_pki_psk, int ws_check,
+   return scheme_hint_bits;
+ }
+ 
++static coap_addr_info_t *
++get_coap_addr_info(coap_uri_scheme_t scheme) {
++  coap_addr_info_t *info = NULL;
++  coap_proto_t proto = 0;
++
++  switch (scheme) {
++  case COAP_URI_SCHEME_COAP:
++    proto = COAP_PROTO_UDP;
++    break;
++  case COAP_URI_SCHEME_COAPS:
++    if (!coap_dtls_is_supported())
++      return NULL;
++    proto = COAP_PROTO_DTLS;
++    break;
++  case COAP_URI_SCHEME_COAP_TCP:
++    if (!coap_tcp_is_supported())
++      return NULL;
++    proto = COAP_PROTO_TCP;
++    break;
++  case COAP_URI_SCHEME_COAPS_TCP:
++    if (!coap_tls_is_supported())
++      return NULL;
++    proto = COAP_PROTO_TLS;
++    break;
++  case COAP_URI_SCHEME_HTTP:
++    if (!coap_tcp_is_supported())
++      return NULL;
++    proto = COAP_PROTO_NONE;
++    break;
++  case COAP_URI_SCHEME_HTTPS:
++    if (!coap_tls_is_supported())
++      return NULL;
++    proto = COAP_PROTO_NONE;
++    break;
++  case COAP_URI_SCHEME_COAP_WS:
++    if (!coap_ws_is_supported())
++      return NULL;
++    proto = COAP_PROTO_WS;
++    break;
++  case COAP_URI_SCHEME_COAPS_WS:
++    if (!coap_wss_is_supported())
++      return NULL;
++    proto = COAP_PROTO_WSS;
++    break;
++  case COAP_URI_SCHEME_LAST:
++  default:
++    return NULL;
++  }
++  info = coap_malloc_type(COAP_STRING, sizeof(coap_addr_info_t));
++  if (info == NULL)
++    return NULL;
++  info->next = NULL;
++  info->proto = proto;
++  info->scheme = scheme;
++
++  coap_address_init(&info->addr);
++  return info;
++}
++
++static void
++update_coap_addr_port(coap_uri_scheme_t scheme, coap_addr_info_t *info,
++                      uint16_t port, uint16_t secure_port, uint16_t ws_port,
++                      uint16_t ws_secure_port,
++                      coap_resolve_type_t type) {
++  switch (scheme) {
++  case COAP_URI_SCHEME_COAP:
++    update_port(&info->addr, port, COAP_DEFAULT_PORT,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_COAPS:
++    update_port(&info->addr, secure_port, COAPS_DEFAULT_PORT,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_COAP_TCP:
++    update_port(&info->addr, port, COAP_DEFAULT_PORT,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_COAPS_TCP:
++    update_port(&info->addr, secure_port, COAPS_DEFAULT_PORT,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_HTTP:
++    update_port(&info->addr, port, 80,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_HTTPS:
++    update_port(&info->addr, secure_port, 443,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_COAP_WS:
++    update_port(&info->addr, ws_port, 80,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_COAPS_WS:
++    update_port(&info->addr, ws_secure_port, 443,
++                type == COAP_RESOLVE_TYPE_LOCAL);
++    break;
++  case COAP_URI_SCHEME_LAST:
++  default:
++    break;
++  }
++}
++
+ coap_addr_info_t *
+ coap_resolve_address_info(const coap_str_const_t *address,
+                           uint16_t port,
+@@ -400,7 +503,6 @@ coap_resolve_address_info(const coap_str_const_t *address,
+   coap_addr_info_t *info_list = NULL;
+   coap_addr_info_t *info_tmp;
+   coap_uri_scheme_t scheme;
+-  coap_proto_t proto = 0;
+ 
+ #if COAP_AF_UNIX_SUPPORT
+   if (address && coap_host_is_unix_domain(address)) {
+@@ -418,57 +520,11 @@ coap_resolve_address_info(const coap_str_const_t *address,
+     if (scheme == COAP_URI_SCHEME_LAST) {
+       return NULL;
+     }
+-    switch (scheme) {
+-    case COAP_URI_SCHEME_COAP:
+-      proto = COAP_PROTO_UDP;
+-      break;
+-    case COAP_URI_SCHEME_COAPS:
+-      if (!coap_dtls_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_DTLS;
+-      break;
+-    case COAP_URI_SCHEME_COAP_TCP:
+-      if (!coap_tcp_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_TCP;
+-      break;
+-    case COAP_URI_SCHEME_COAPS_TCP:
+-      if (!coap_tls_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_TLS;
+-      break;
+-    case COAP_URI_SCHEME_HTTP:
+-      if (!coap_tcp_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_NONE;
+-      break;
+-    case COAP_URI_SCHEME_HTTPS:
+-      if (!coap_tls_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_NONE;
+-      break;
+-    case COAP_URI_SCHEME_COAP_WS:
+-      if (!coap_ws_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_WS;
+-      break;
+-    case COAP_URI_SCHEME_COAPS_WS:
+-      if (!coap_wss_is_supported())
+-        return NULL;
+-      proto = COAP_PROTO_WSS;
+-      break;
+-    case COAP_URI_SCHEME_LAST:
+-    default:
++    info = get_coap_addr_info(scheme);
++    if (info == NULL) {
+       return NULL;
+     }
+-    info = coap_malloc_type(COAP_STRING, sizeof(coap_addr_info_t));
+-    if (info == NULL)
+-      return NULL;
+-    info->next = NULL;
+-    info->proto = proto;
+-    info->scheme = scheme;
+ 
+-    coap_address_init(&info->addr);
+     if (!coap_address_set_unix_domain(&info->addr, address->s,
+                                       address->length)) {
+       coap_free_type(COAP_STRING, info);
+@@ -511,61 +567,11 @@ coap_resolve_address_info(const coap_str_const_t *address,
+ #endif /* COAP_IPV6_SUPPORT */
+       for (scheme = 0; scheme < COAP_URI_SCHEME_LAST; scheme++) {
+         if (scheme_hint_bits & (1 << scheme)) {
+-          switch (scheme) {
+-          case COAP_URI_SCHEME_COAP:
+-            proto = COAP_PROTO_UDP;
+-            break;
+-          case COAP_URI_SCHEME_COAPS:
+-            if (!coap_dtls_is_supported())
+-              continue;
+-            proto = COAP_PROTO_DTLS;
+-            break;
+-          case COAP_URI_SCHEME_COAP_TCP:
+-            if (!coap_tcp_is_supported())
+-              continue;
+-            proto = COAP_PROTO_TCP;
+-            break;
+-          case COAP_URI_SCHEME_COAPS_TCP:
+-            if (!coap_tls_is_supported())
+-              continue;
+-            proto = COAP_PROTO_TLS;
+-            break;
+-          case COAP_URI_SCHEME_HTTP:
+-            if (!coap_tcp_is_supported())
+-              continue;
+-            proto = COAP_PROTO_NONE;
+-            break;
+-          case COAP_URI_SCHEME_HTTPS:
+-            if (!coap_tls_is_supported())
+-              continue;
+-            proto = COAP_PROTO_NONE;
+-            break;
+-          case COAP_URI_SCHEME_COAP_WS:
+-            if (!coap_ws_is_supported())
+-              continue;
+-            proto = COAP_PROTO_WS;
+-            break;
+-          case COAP_URI_SCHEME_COAPS_WS:
+-            if (!coap_wss_is_supported())
+-              continue;
+-            proto = COAP_PROTO_WSS;
+-            break;
+-          case COAP_URI_SCHEME_LAST:
+-          default:
+-            continue;
+-          }
+-
+-          info = coap_malloc_type(COAP_STRING, sizeof(coap_addr_info_t));
++          info = get_coap_addr_info(scheme);
+           if (info == NULL) {
+-            freeaddrinfo(res);
+-            /* malloc failure - return what we have so far */
+-            return info_list;
++            continue;
+           }
+ 
+-          info->next = NULL;
+-          info->scheme = scheme;
+-          info->proto = proto;
+-          coap_address_init(&info->addr);
+ #if !defined(WITH_LWIP)
+           info->addr.size = (socklen_t)ainfo->ai_addrlen;
+           memcpy(&info->addr.addr, ainfo->ai_addr, ainfo->ai_addrlen);
+@@ -600,43 +606,8 @@ coap_resolve_address_info(const coap_str_const_t *address,
+             ;
+           }
+ #endif /* WITH_LWIP */
+-          switch (scheme) {
+-          case COAP_URI_SCHEME_COAP:
+-            update_port(&info->addr, port, COAP_DEFAULT_PORT,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_COAPS:
+-            update_port(&info->addr, secure_port, COAPS_DEFAULT_PORT,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_COAP_TCP:
+-            update_port(&info->addr, port, COAP_DEFAULT_PORT,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_COAPS_TCP:
+-            update_port(&info->addr, secure_port, COAPS_DEFAULT_PORT,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_HTTP:
+-            update_port(&info->addr, port, 80,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_HTTPS:
+-            update_port(&info->addr, secure_port, 443,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_COAP_WS:
+-            update_port(&info->addr, ws_port, 80,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_COAPS_WS:
+-            update_port(&info->addr, ws_secure_port, 443,
+-                        type == COAP_RESOLVE_TYPE_LOCAL);
+-            break;
+-          case COAP_URI_SCHEME_LAST:
+-          default:
+-            break;
+-          }
++          update_coap_addr_port(scheme, info, port, secure_port, ws_port,
++                                ws_secure_port, type);
+ 
+           /* Check there are no duplications */
+           info_tmp = info_list;
+@@ -681,62 +652,16 @@ coap_resolve_address_info(const coap_str_const_t *address,
+   coap_addr_info_t *info_prev = NULL;
+   coap_addr_info_t *info_list = NULL;
+   coap_uri_scheme_t scheme;
+-  coap_proto_t proto = 0;
+   (void)ai_hints_flags;
+ 
+   if (netutils_get_ipv6(&addr_ipv6, &netif, (const char *)address->s) >= 0) {
+     for (scheme = 0; scheme < COAP_URI_SCHEME_LAST; scheme++) {
+       if (scheme_hint_bits & (1 << scheme)) {
+-        switch (scheme) {
+-        case COAP_URI_SCHEME_COAP:
+-          proto = COAP_PROTO_UDP;
+-          break;
+-        case COAP_URI_SCHEME_COAPS:
+-          if (!coap_dtls_is_supported())
+-            continue;
+-          proto = COAP_PROTO_DTLS;
+-          break;
+-        case COAP_URI_SCHEME_COAP_TCP:
+-          if (!coap_tcp_is_supported())
+-            continue;
+-          proto = COAP_PROTO_TCP;
+-          break;
+-        case COAP_URI_SCHEME_COAPS_TCP:
+-          if (!coap_tls_is_supported())
+-            continue;
+-          proto = COAP_PROTO_TLS;
+-          break;
+-        case COAP_URI_SCHEME_HTTP:
+-          if (!coap_tcp_is_supported())
+-            continue;
+-          proto = COAP_PROTO_NONE;
+-          break;
+-        case COAP_URI_SCHEME_HTTPS:
+-          if (!coap_tls_is_supported())
+-            continue;
+-          proto = COAP_PROTO_NONE;
+-          break;
+-        case COAP_URI_SCHEME_COAP_WS:
+-          if (!coap_ws_is_supported())
+-            continue;
+-          proto = COAP_PROTO_WS;
+-          break;
+-        case COAP_URI_SCHEME_COAPS_WS:
+-          if (!coap_wss_is_supported())
+-            continue;
+-          proto = COAP_PROTO_WSS;
+-          break;
+-        case COAP_URI_SCHEME_LAST:
+-        default:
++        info = get_coap_addr_info(scheme);
++        if (info == NULL) {
+           continue;
+         }
+ 
+-        info = coap_malloc_type(COAP_STRING, sizeof(coap_addr_info_t));
+-        if (info == NULL) {
+-          /* malloc failure - return what we have so far */
+-          return info_list;
+-        }
+-        info->next = NULL;
+         /* Need to return in same order as getaddrinfo() */
+         if (!info_prev) {
+           info_list = info;
+@@ -746,43 +671,15 @@ coap_resolve_address_info(const coap_str_const_t *address,
+           info_prev = info;
+         }
+ 
+-        info->scheme = scheme;
+-        info->proto = proto;
+-        coap_address_init(&info->addr);
+         info->addr.size = sizeof(struct sockaddr_in6);
+         info->addr.addr.sin6.sin6_family = AF_INET6;
+         memcpy(&info->addr.addr.sin6.sin6_addr, &addr_ipv6,
+                sizeof(info->addr.addr.sin6.sin6_addr));
+-        info->addr.addr.sin6.sin6_scope_id = (uint32_t)netif_get_id(netif);
+-        switch (scheme) {
+-        case COAP_URI_SCHEME_COAP:
+-          update_port(&info->addr, port, COAP_DEFAULT_PORT,
+-                      type == COAP_RESOLVE_TYPE_LOCAL);
+-          break;
+-        case COAP_URI_SCHEME_COAPS:
+-          update_port(&info->addr, secure_port, COAPS_DEFAULT_PORT,
+-                      type == COAP_RESOLVE_TYPE_LOCAL);
+-          break;
+-        case COAP_URI_SCHEME_COAP_TCP:
+-          update_port(&info->addr, port, COAP_DEFAULT_PORT,
+-                      type == COAP_RESOLVE_TYPE_LOCAL);
+-          break;
+-        case COAP_URI_SCHEME_COAPS_TCP:
+-          update_port(&info->addr, secure_port, COAPS_DEFAULT_PORT,
+-                      type == COAP_RESOLVE_TYPE_LOCAL);
+-          break;
+-        case COAP_URI_SCHEME_HTTP:
+-          update_port(&info->addr, port, ws_port,
+-                      type == COAP_RESOLVE_TYPE_LOCAL);
+-          break;
+-        case COAP_URI_SCHEME_HTTPS:
+-          update_port(&info->addr, secure_port, ws_secure_port,
+-                      type == COAP_RESOLVE_TYPE_LOCAL);
+-          break;
+-        case COAP_URI_SCHEME_LAST:
+-        default:
+-          break;
+-        }
++        info->addr.addr.sin6.sin6_scope_id =
++            netif ? (uint32_t)netif_get_id(netif) : 0;
++
++        update_coap_addr_port(scheme, info, port, secure_port, ws_port,
++                              ws_secure_port, type);
+       }
+     }
+     return info_list;
+diff --git a/src/coap_block.c b/src/coap_block.c
+index 9b1d6dc1..b2a511bd 100644
+--- a/src/coap_block.c
++++ b/src/coap_block.c
+@@ -64,7 +64,7 @@ coap_get_block_b(const coap_session_t *session, const coap_pdu_t *pdu,
+   memset(block, 0, sizeof(coap_block_b_t));
+ 
+   if (pdu && (option = coap_check_option(pdu, number, &opt_iter)) != NULL) {
+-    unsigned int num;
++    uint32_t num;
+ 
+     if (COAP_OPT_BLOCK_MORE(option))
+       block->m = 1;
+@@ -645,12 +645,14 @@ coap_add_data_large_internal(coap_session_t *session,
+      CSM Max-Message-Size theoretical maximum = 4,294,967,295
+      So, if using blocks, we are limited to 1,073,740,800.
+    */
+-#define MAX_BLK_LEN (((1 << 20) - 1) * (1 << (6 + 4)))
++#define MAX_BLK_LEN (((1UL << 20) - 1) * (1 << (6 + 4)))
+ 
++#if UINT_MAX > MAX_BLK_LEN
+   if (length > MAX_BLK_LEN) {
+-    coap_log_warn("Size of large buffer restricted to 0x%x bytes\n", MAX_BLK_LEN);
++    coap_log_warn("Size of large buffer restricted to 0x%lx bytes\n", MAX_BLK_LEN);
+     length = MAX_BLK_LEN;
+   }
++#endif /* UINT_MAX > MAX_BLK_LEN */
+ 
+   /* Determine the block size to use, adding in sensible options if needed */
+   if (COAP_PDU_IS_REQUEST(pdu)) {
+@@ -2372,7 +2374,7 @@ coap_handle_request_send_block(coap_session_t *session,
+ #endif /* COAP_Q_BLOCK_SUPPORT */
+   coap_option_iterator_init(pdu, &opt_b_iter, COAP_OPT_ALL);
+   while ((option = coap_option_next(&opt_b_iter))) {
+-    unsigned int num;
++    uint32_t num;
+     if (opt_b_iter.number != p->option)
+       continue;
+     num = coap_opt_block_num(option);
+diff --git a/src/coap_debug.c b/src/coap_debug.c
+index be2d6c8a..1d5372b5 100644
+--- a/src/coap_debug.c
++++ b/src/coap_debug.c
+@@ -57,9 +57,13 @@ static coap_log_t maxlog = LOG_CONF_LEVEL_COAP == 0 ? /* = LOG_LEVEL_NONE */
+                              (LOG_CONF_LEVEL_COAP == 3 ? /* = LOG_LEVEL_INFO */
+                               COAP_LOG_INFO :
+                               COAP_LOG_DEBUG)));
+-#else /* WITH_CONTIKI */
++#else /* !WITH_CONTIKI */
+ static coap_log_t maxlog = COAP_LOG_WARN;  /* default maximum CoAP log level */
+-#endif /* WITH_CONTIKI */
++#endif /* !WITH_CONTIKI */
++
++#ifdef RIOT_VERSION
++#include "flash_utils.h"
++#endif /* RIOT_VERSION */
+ 
+ static int use_fprintf_for_show_pdu = 1; /* non zero to output with fprintf */
+ 
+@@ -1206,11 +1210,16 @@ coap_log_impl(coap_log_t level, const char *format, ...) {
+ #endif /* ! COAP_CONSTRAINED_STACK */
+     va_list ap;
+     va_start(ap, format);
++
+ #if COAP_CONSTRAINED_STACK
+     coap_mutex_lock(&m_log_impl);
+ #endif /* COAP_CONSTRAINED_STACK */
+ 
++#ifdef RIOT_VERSION
++    flash_vsnprintf(message, sizeof(message), format, ap);
++#else /* !RIOT_VERSION */
+     vsnprintf(message, sizeof(message), format, ap);
++#endif /* !RIOT_VERSION */
+     va_end(ap);
+     log_handler(level, message);
+ #if COAP_CONSTRAINED_STACK
+@@ -1233,7 +1242,11 @@ coap_log_impl(coap_log_t level, const char *format, ...) {
+     fprintf(log_fd, "%s ", coap_log_level_desc(level));
+ 
+     va_start(ap, format);
++#ifdef RIOT_VERSION
++    flash_vfprintf(log_fd, format, ap);
++#else /* !RIOT_VERSION */
+     vfprintf(log_fd, format, ap);
++#endif /* !RIOT_VERSION */
+     va_end(ap);
+     fflush(log_fd);
+   }
+@@ -1244,7 +1257,7 @@ static struct packet_num_interval {
+   int end;
+ } packet_loss_intervals[10];
+ static int num_packet_loss_intervals = 0;
+-static int packet_loss_level = 0;
++static uint16_t packet_loss_level = 0;
+ static int send_packet_count = 0;
+ 
+ int
+diff --git a/src/coap_io.c b/src/coap_io.c
+index 4c6340dc..5944d85e 100644
+--- a/src/coap_io.c
++++ b/src/coap_io.c
+@@ -1029,10 +1029,12 @@ coap_socket_recv(coap_socket_t *sock, coap_packet_t *packet) {
+                       coap_socket_strerror());
+         return -2;
+       }
+-      coap_log_warn("** %s: coap_socket_recv: %s\n",
+-                    sock->session ?
+-                    coap_session_str(sock->session) : "",
+-                    coap_socket_strerror());
++      if (errno != EAGAIN) {
++        coap_log_warn("** %s: coap_socket_recv: %s\n",
++                      sock->session ?
++                      coap_session_str(sock->session) : "",
++                      coap_socket_strerror());
++      }
+       goto error;
+     } else if (len > 0) {
+       packet->length = (size_t)len;
+@@ -1115,7 +1117,9 @@ coap_socket_recv(coap_socket_t *sock, coap_packet_t *packet) {
+                       coap_socket_strerror());
+         return 0;
+       }
+-      coap_log_warn("coap_socket_recv: %s\n", coap_socket_strerror());
++      if (errno != EAGAIN) {
++        coap_log_warn("coap_socket_recv: %s\n", coap_socket_strerror());
++      }
+       goto error;
+     } else {
+ #ifdef HAVE_STRUCT_CMSGHDR
+diff --git a/src/coap_mem.c b/src/coap_mem.c
+index 7bc2cbb1..776a4d51 100644
+--- a/src/coap_mem.c
++++ b/src/coap_mem.c
+@@ -54,7 +54,11 @@
+  * fixed-size memory blocks.
+  */
+ #ifndef COAP_MAX_ENDPOINTS
++#if !COAP_DISABLE_TCP
+ #define COAP_MAX_ENDPOINTS          (4U)
++#else /* COAP_DISABLE_TCP */
++#define COAP_MAX_ENDPOINTS          (2U)
++#endif /* COAP_DISABLE_TCP */
+ #endif /* COAP_MAX_ENDPOINTS */
+ 
+ /**
+@@ -102,12 +106,10 @@
+ 
+ /**
+  * The maximum number of nodes in retransmission queue on platforms
+- * that allocate fixed-size memory blocks. The default value is
+- * #COAP_MAX_ENDPOINTS * #COAP_MAX_PACKETS.
++ * that allocate fixed-size memory blocks.
+  */
+ #ifndef COAP_MAX_NODES
+-#define COAP_MAX_NODES               \
+-  ((COAP_MAX_ENDPOINTS) * (COAP_MAX_PACKETS))
++#define COAP_MAX_NODES           (COAP_MAX_PACKETS)
+ #endif /* COAP_MAX_NODES */
+ 
+ /**
+@@ -120,11 +122,10 @@
+ 
+ /**
+  * The maximum number of CoAP PDUs processed in parallel on platforms
+- * that allocate fixed-size memory blocks. Default is
+- * #COAP_MAX_ENDPOINTS * 4.
++ * that allocate fixed-size memory blocks.
+  */
+ #ifndef COAP_MAX_PDUS
+-#define COAP_MAX_PDUS               ((COAP_MAX_ENDPOINTS) * 4U)
++#define COAP_MAX_PDUS               (4U)
+ #endif /* COAP_MAX_PDUS */
+ 
+ /**
+@@ -137,10 +138,10 @@
+ 
+ /**
+  * The maximum number of DTLS sessions on platforms that allocate
+- * fixed-size memory blocks. Default is #COAP_MAX_ENDPOINTS.
++ * fixed-size memory blocks.
+  */
+ #ifndef COAP_MAX_SESSIONS
+-#define COAP_MAX_SESSIONS           (COAP_MAX_ENDPOINTS)
++#define COAP_MAX_SESSIONS           (4U)
+ #endif /* COAP_MAX_CONTEXTS */
+ 
+ /**
+diff --git a/src/coap_net.c b/src/coap_net.c
+index bbce240d..355b3f30 100644
+--- a/src/coap_net.c
++++ b/src/coap_net.c
+@@ -2033,7 +2033,9 @@ coap_read_endpoint(coap_context_t *ctx, coap_endpoint_t *endpoint, coap_tick_t n
+ 
+   bytes_read = coap_netif_dgrm_read_ep(endpoint, packet);
+   if (bytes_read < 0) {
+-    coap_log_warn("*  %s: read failed\n", coap_endpoint_str(endpoint));
++    if (errno != EAGAIN) {
++      coap_log_warn("*  %s: read failed\n", coap_endpoint_str(endpoint));
++    }
+   } else if (bytes_read > 0) {
+     coap_session_t *session = coap_endpoint_get_session(endpoint, packet, now);
+     if (session) {
+diff --git a/src/coap_pdu.c b/src/coap_pdu.c
+index 56cb55b6..c55bc53c 100644
+--- a/src/coap_pdu.c
++++ b/src/coap_pdu.c
+@@ -98,9 +98,11 @@ coap_pdu_init(coap_pdu_type_t type, coap_pdu_code_t code, coap_mid_t mid,
+               size_t size) {
+   coap_pdu_t *pdu;
+ 
++#ifndef RIOT_VERSION
+   assert(type <= 0x3);
+   assert(code <= 0xff);
+   assert(mid >= 0 && mid <= 0xffff);
++#endif /* RIOT_VERSION */
+ 
+ #ifdef WITH_LWIP
+ #if MEMP_STATS
+@@ -935,6 +937,7 @@ coap_pdu_parse_header_size(coap_proto_t proto,
+   return header_size;
+ }
+ 
++#if !COAP_DISABLE_TCP
+ /*
+  * strm
+  * return +ve  PDU size including token
+@@ -952,7 +955,7 @@ coap_pdu_parse_size(coap_proto_t proto,
+   size_t size = 0;
+   const uint8_t *token_start = NULL;
+ 
+-  if ((proto == COAP_PROTO_TCP || proto==COAP_PROTO_TLS) && length >= 1) {
++  if ((proto == COAP_PROTO_TCP || proto == COAP_PROTO_TLS) && length >= 1) {
+     uint8_t len = *data >> 4;
+     uint8_t tkl = *data & 0x0f;
+ 
+@@ -991,6 +994,7 @@ coap_pdu_parse_size(coap_proto_t proto,
+ 
+   return size;
+ }
++#endif /* ! COAP_DISABLE_TCP */
+ 
+ int
+ coap_pdu_parse_header(coap_pdu_t *pdu, coap_proto_t proto) {
+@@ -1235,7 +1239,7 @@ write_prefix(char **obp, size_t *len, const char *prf, size_t prflen) {
+ }
+ 
+ static int
+-write_char(char **obp, size_t *len, char c, int printable) {
++write_char(char **obp, size_t *len, int c, int printable) {
+   /* Make sure space for null terminating byte */
+   if (*len < 2 +1) {
+     return 0;
+@@ -1428,6 +1432,7 @@ coap_pdu_encode_header(coap_pdu_t *pdu, coap_proto_t proto) {
+     pdu->token[-2] = (uint8_t)(pdu->mid >> 8);
+     pdu->token[-1] = (uint8_t)(pdu->mid);
+     pdu->hdr_size = 4;
++#if !COAP_DISABLE_TCP
+   } else if (COAP_PROTO_RELIABLE(proto)) {
+     size_t len;
+     assert(pdu->used_size >= pdu->e_token_length);
+@@ -1489,6 +1494,7 @@ coap_pdu_encode_header(coap_pdu_t *pdu, coap_proto_t proto) {
+       pdu->token[-1] = pdu->code;
+       pdu->hdr_size = 6;
+     }
++#endif /* ! COAP_DISABLE_TCP */
+   } else {
+     coap_log_warn("coap_pdu_encode_header: unsupported protocol\n");
+   }
+@@ -1502,7 +1508,9 @@ coap_pdu_get_code(const coap_pdu_t *pdu) {
+ 
+ void
+ coap_pdu_set_code(coap_pdu_t *pdu, coap_pdu_code_t code) {
++#ifndef RIOT_VERSION
+   assert(code <= 0xff);
++#endif /* RIOT_VERSION */
+   pdu->code = code;
+ }
+ 
+@@ -1529,6 +1537,8 @@ coap_pdu_get_mid(const coap_pdu_t *pdu) {
+ 
+ void
+ coap_pdu_set_mid(coap_pdu_t *pdu, coap_mid_t mid) {
++#if (UINT_MAX > 65535)
+   assert(mid >= 0 && mid <= 0xffff);
++#endif /* UINT_MAX > 65535 */
+   pdu->mid = mid;
+ }
+diff --git a/src/coap_resource.c b/src/coap_resource.c
+index 9e11de0a..36c86704 100644
+--- a/src/coap_resource.c
++++ b/src/coap_resource.c
+@@ -23,8 +23,6 @@
+ #include <sys/timerfd.h>
+ #endif /* COAP_EPOLL_SUPPORT */
+ 
+-#define COAP_PRINT_STATUS_MAX (~COAP_PRINT_STATUS_MASK)
+-
+ #ifndef min
+ #define min(a,b) ((a) < (b) ? (a) : (b))
+ #endif
+@@ -135,7 +133,7 @@ coap_print_status_t
+ coap_print_wellknown(coap_context_t *context, unsigned char *buf, size_t *buflen,
+                      size_t offset, const coap_string_t *query_filter) {
+ #endif /* GCC */
+-  size_t output_length = 0;
++  coap_print_status_t output_length = 0;
+   unsigned char *p = buf;
+   const uint8_t *bufend = buf + *buflen;
+   size_t left, written = 0;
+@@ -248,7 +246,7 @@ coap_print_wellknown(coap_context_t *context, unsigned char *buf, size_t *buflen
+   }
+ 
+   *buflen = written;
+-  output_length = p - buf;
++  output_length = (coap_print_status_t)(p - buf);
+ 
+   if (output_length > COAP_PRINT_STATUS_MAX) {
+     return COAP_PRINT_STATUS_ERROR;
+@@ -618,7 +616,7 @@ coap_print_link(const coap_resource_t *resource,
+   const uint8_t *bufend = buf + *len;
+   coap_attr_t *attr;
+   coap_print_status_t result = 0;
+-  size_t output_length = 0;
++  coap_print_status_t output_length = 0;
+   const size_t old_offset = *offset;
+ 
+   *len = 0;
+@@ -655,7 +653,7 @@ coap_print_link(const coap_resource_t *resource,
+     COPY_COND_WITH_OFFSET(p, bufend, *offset, ";osc", 4, *len);
+ #endif /* COAP_OSCORE_SUPPORT */
+ 
+-  output_length = p - buf;
++  output_length = (coap_print_status_t)(p - buf);
+ 
+   if (output_length > COAP_PRINT_STATUS_MAX) {
+     return COAP_PRINT_STATUS_ERROR;
+diff --git a/src/coap_tinydtls.c b/src/coap_tinydtls.c
+index 06d92e2f..69dbffd8 100644
+--- a/src/coap_tinydtls.c
++++ b/src/coap_tinydtls.c
+@@ -332,7 +332,7 @@ static int
+ dtls_event(struct dtls_context_t *dtls_context,
+            session_t *dtls_session,
+            dtls_alert_level_t level,
+-           uint16_t code) {
++           unsigned short code) {
+   (void)dtls_context;
+   (void)dtls_session;
+ 
+diff --git a/src/coap_uri.c b/src/coap_uri.c
+index 6f658730..675165a2 100644
+--- a/src/coap_uri.c
++++ b/src/coap_uri.c
+@@ -215,7 +215,7 @@ coap_split_uri_sub(const uint8_t *str_var,
+     }
+ 
+     if (p < q) {                /* explicit port number given */
+-      int uri_port = 0;
++      long uri_port = 0;
+ 
+       while ((p < q) && (uri_port <= UINT16_MAX))
+         uri_port = uri_port * 10 + (*p++ - '0');
+@@ -636,21 +636,23 @@ coap_split_query(const uint8_t *s, size_t length,
+ 
+ coap_uri_t *
+ coap_new_uri(const uint8_t *uri, unsigned int length) {
+-  unsigned char *result;
++  uint8_t *result;
++  coap_uri_t *out_uri;
+ 
+-  result = (unsigned char *)coap_malloc_type(COAP_STRING, length + 1 + sizeof(coap_uri_t));
++  out_uri = (coap_uri_t *)coap_malloc_type(COAP_STRING, length + 1 + sizeof(coap_uri_t));
+ 
+-  if (!result)
++  if (!out_uri)
+     return NULL;
+ 
++  result = (uint8_t *)out_uri;
+   memcpy(URI_DATA(result), uri, length);
+   URI_DATA(result)[length] = '\0'; /* make it zero-terminated */
+ 
+-  if (coap_split_uri(URI_DATA(result), length, (coap_uri_t *)result) < 0) {
+-    coap_free_type(COAP_STRING, result);
++  if (coap_split_uri(URI_DATA(result), length, out_uri) < 0) {
++    coap_free_type(COAP_STRING, out_uri);
+     return NULL;
+   }
+-  return (coap_uri_t *)result;
++  return out_uri;
+ }
+ 
+ coap_uri_t *
+-- 
+2.34.1
+

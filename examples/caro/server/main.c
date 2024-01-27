@@ -114,6 +114,7 @@ int caro_cli_cmd(int argc, char* argv[]) {
     caro_server_t server;
     caro_server_init(&server);
     caro_server_use_driver(&server, UDP, &gcoap_driver);
+    caro_server_use_driver(&server, TCP, &libcoap_driver);
     caro_server_register_resource(&server, "/", GET | POST, UDP | TCP,
                                   ";ct=0;rt=\"count\";obs", &index_handler);
     caro_server_start(&server);

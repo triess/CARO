@@ -1,67 +1,25 @@
-# name of the application
-APPLICATION = caro_example
-
-# If no BOARD is found in the environment, use this default:
-BOARD ?= native
-
-# This has to be the absolute path to the RIOT base directory:
 RIOTBASE ?= $(CURDIR)/../..
+TARGET?=native
 
-# Include packages that pull up and auto-init the link layer.
-# NOTE: 6LoWPAN will be included if IEEE802.15.4 devices are present
-USEMODULE += netdev_default
+all: pkg server
 
-# use GNRC by default
-LWIP_IPV4 ?= 0
-LWIP_IPV6 ?= 0
+pkg:
+	@IN_GIT="false" ; \
+	if [ "$${IN_GIT}" = "true" ] ; then \
+		rm -rf pkg_libcoap/patches ; \
+		mkdir -p pkg_libcoap/patches ; \
+		RIOT_HASH=`grep PKG_VERSION= pkg_libcoap/Makefile | cut -d= -f2` ; \
+		git pull --unshallow > /dev/null 2>&1 ; \
+		if [ ! -z "$${RIOT_HASH}" ] ; then \
+			(cd pkg_libcoap/patches ; git format-patch -n $${RIOT_HASH}) ; \
+		fi \
+	fi
+	rm -rf $(RIOTBASE)/pkg/libcoap && mkdir $(RIOTBASE)/pkg/libcoap
+	cd pkg_libcoap && cp -r * $(RIOTBASE)/pkg/libcoap
+	@HAVE_KCONFIG=`grep libcoap/Kconfig $(RIOTBASE)/pkg/Kconfig | wc -l` ; \
+	if [ "$${HAVE_KCONFIG}" = 0 ] ; then \
+		sed -i '/rsource "libcose\/Kconfig"/irsource "libcoap\/Kconfig"' $(RIOTBASE)/pkg/Kconfig ; \
+	fi
 
-ifeq (,$(filter 1, $(LWIP_IPV4) $(LWIP_IPV6)))
-  USEMODULE += auto_init_gnrc_netif
-  # Specify the mandatory networking modules
-  USEMODULE += gnrc_ipv6_default
-  # Additional networking modules that can be dropped if not needed
-  USEMODULE += gnrc_icmpv6_echo
-else
-  USEMODULE += lwip_netdev
-
-  ifeq (1,$(LWIP_IPV4))
-    USEMODULE += ipv4_addr
-
-    USEMODULE += lwip_arp
-    USEMODULE += lwip_ipv4
-    USEMODULE += lwip_dhcp_auto
-    CFLAGS += -DETHARP_SUPPORT_STATIC_ENTRIES=1
-  endif
-
-  ifeq (1,$(LWIP_IPV6))
-    USEMODULE += ipv6_addr
-
-    USEMODULE += lwip_ipv6
-    USEMODULE += lwip_ipv6_autoconfig
-  endif
-endif
-
-USEMODULE += gcoap
-
-# Required by gcoap example
-USEMODULE += od
-USEMODULE += fmt
-USEMODULE += netutils
-USEMODULE += random
-# Add also the shell, some shell commands
-USEMODULE += shell
-USEMODULE += shell_cmds_default
-USEMODULE += ps
-
-# required modules
-USEMODULE += caro
-
-# Comment this out to disable code in RIOT that does safety checking
-# which is not needed in a production environment but helps in the
-# development process:
-DEVELHELP ?= 1
-
-# Change this to 0 show compiler invocation lines by default:
-QUIET ?= 1
-
-include $(RIOTBASE)/Makefile.include
+server: pkg
+	$(MAKE) -C server RIOT_CI_BUILD=1

@@ -1,0 +1,425 @@
+From 05d02be7a98edb8170f1d967ced8c92b887681a3 Mon Sep 17 00:00:00 2001
+From: Jon Shallow <supjps-libcoap@jpshallow.com>
+Date: Wed, 18 Oct 2023 13:28:51 +0100
+Subject: [PATCH 1/4] coap_net.c: Fix CSM timeouts in coap_client_delay_first()
+
+Reduce timeout to 1 second and enter established state for servers that
+only partially implement RFC8323 for TCP support, but do not send a CSM.
+
+Add new coap_context_set_csm_timeout_ms() to control the value of the timeout.
+---
+ include/coap3/coap_net.h              | 33 +++++++++++++--
+ include/coap3/coap_net_internal.h     |  4 +-
+ include/coap3/coap_session_internal.h |  1 +
+ libcoap-3.map                         |  2 +
+ libcoap-3.sym                         |  2 +
+ man/Makefile.am                       |  6 ++-
+ man/coap_context.txt.in               | 31 +++++++-------
+ man/coap_deprecated.txt.in            | 21 ++++++++++
+ src/coap_io.c                         | 17 ++++----
+ src/coap_net.c                        | 60 ++++++++++++++++++++++++---
+ 10 files changed, 140 insertions(+), 37 deletions(-)
+
+diff --git a/include/coap3/coap_net.h b/include/coap3/coap_net.h
+index 9289caad..8ad13957 100644
+--- a/include/coap3/coap_net.h
++++ b/include/coap3/coap_net.h
+@@ -295,10 +295,12 @@ unsigned int coap_context_get_session_timeout(const coap_context_t *context);
+  * 0 (the default) means use wait forever.
+  *
+  * @param context    The coap_context_t object.
+- * @param csm_tmeout The CSM timeout value.
++ * @param csm_timeout The CSM timeout value.
++ *
++ * @deprecated Use coap_context_set_csm_timeout_ms() instead.
+  */
+-void coap_context_set_csm_timeout(coap_context_t *context,
+-                                  unsigned int csm_tmeout);
++COAP_DEPRECATED void coap_context_set_csm_timeout(coap_context_t *context,
++                                                  unsigned int csm_timeout);
+ 
+ /**
+  * Get the CSM timeout value
+@@ -306,8 +308,31 @@ void coap_context_set_csm_timeout(coap_context_t *context,
+  * @param context The coap_context_t object.
+  *
+  * @return The CSM timeout value.
++ *
++ * @deprecated Use coap_context_get_csm_timeout_ms() instead.
++ */
++COAP_DEPRECATED unsigned int coap_context_get_csm_timeout(const coap_context_t *context);
++
++/**
++ * Set the CSM timeout value. The number of milliseconds to wait for a (TCP) CSM
++ * negotiation response from the peer.
++ * The initial default is 1000 milliseconds.
++ *
++ * @param context        The coap_context_t object.
++ * @param csm_timeout_ms The CSM timeout value in milliseconds (which could get updated
++ *                       to be in the range of 10 - 10000 milliseconds).
++ */
++void coap_context_set_csm_timeout_ms(coap_context_t *context,
++                                     unsigned int csm_timeout_ms);
++
++/**
++ * Get the CSM timeout value
++ *
++ * @param context The coap_context_t object.
++ *
++ * @return The CSM timeout value in millisecs.
+  */
+-unsigned int coap_context_get_csm_timeout(const coap_context_t *context);
++unsigned int coap_context_get_csm_timeout_ms(const coap_context_t *context);
+ 
+ /**
+  * Set the CSM max session size value. The largest PDU that can be received.
+diff --git a/include/coap3/coap_net_internal.h b/include/coap3/coap_net_internal.h
+index 7c48ea75..197e9b5e 100644
+--- a/include/coap3/coap_net_internal.h
++++ b/include/coap3/coap_net_internal.h
+@@ -156,8 +156,8 @@ struct coap_context_t {
+   unsigned int ping_timeout;           /**< Minimum inactivity time before
+                                             sending a ping message. 0 means
+                                             disabled. */
+-  unsigned int csm_timeout;           /**< Timeout for waiting for a CSM from
+-                                           the remote side. 0 means disabled. */
++  uint32_t csm_timeout_ms;         /**< Timeout for waiting for a CSM from
++                                           the remote side. */
+   uint32_t csm_max_message_size;   /**< Value for CSM Max-Message-Size */
+   uint64_t etag;                   /**< Next ETag to use */
+ 
+diff --git a/include/coap3/coap_session_internal.h b/include/coap3/coap_session_internal.h
+index 6cff5de3..f634355e 100644
+--- a/include/coap3/coap_session_internal.h
++++ b/include/coap3/coap_session_internal.h
+@@ -184,6 +184,7 @@ struct coap_session_t {
+   uint8_t delay_recursive;        /**< Set if in coap_client_delay_first() */
+   uint8_t no_observe_cancel;      /**< Set if do not cancel observe on session
+                                        close */
++  uint8_t csm_not_seen;           /**< Set if timeout waiting for CSM */
+ #if COAP_OSCORE_SUPPORT
+   uint8_t oscore_encryption;      /**< OSCORE is used for this session  */
+   COAP_OSCORE_B_2_STEP b_2_step;  /**< Appendix B.2 negotiation step */
+diff --git a/libcoap-3.map b/libcoap-3.map
+index af443415..62fe5a3f 100644
+--- a/libcoap-3.map
++++ b/libcoap-3.map
+@@ -43,6 +43,7 @@ global:
+   coap_context_get_coap_fd;
+   coap_context_get_csm_max_message_size;
+   coap_context_get_csm_timeout;
++  coap_context_get_csm_timeout_ms;
+   coap_context_get_max_handshake_sessions;
+   coap_context_get_max_idle_sessions;
+   coap_context_get_session_timeout;
+@@ -50,6 +51,7 @@ global:
+   coap_context_set_block_mode;
+   coap_context_set_csm_max_message_size;
+   coap_context_set_csm_timeout;
++  coap_context_set_csm_timeout_ms;
+   coap_context_set_keepalive;
+   coap_context_set_max_handshake_sessions;
+   coap_context_set_max_idle_sessions;
+diff --git a/libcoap-3.sym b/libcoap-3.sym
+index 6f616157..8ad20f72 100644
+--- a/libcoap-3.sym
++++ b/libcoap-3.sym
+@@ -41,6 +41,7 @@ coap_clone_uri
+ coap_context_get_coap_fd
+ coap_context_get_csm_max_message_size
+ coap_context_get_csm_timeout
++coap_context_get_csm_timeout_ms
+ coap_context_get_max_handshake_sessions
+ coap_context_get_max_idle_sessions
+ coap_context_get_session_timeout
+@@ -48,6 +49,7 @@ coap_context_oscore_server
+ coap_context_set_block_mode
+ coap_context_set_csm_max_message_size
+ coap_context_set_csm_timeout
++coap_context_set_csm_timeout_ms
+ coap_context_set_keepalive
+ coap_context_set_max_handshake_sessions
+ coap_context_set_max_idle_sessions
+diff --git a/man/Makefile.am b/man/Makefile.am
+index e92a56c3..5c2f6876 100644
+--- a/man/Makefile.am
++++ b/man/Makefile.am
+@@ -113,9 +113,11 @@ install-man: install-man3 install-man5 install-man7
+ 	@echo ".so man3/coap_cache.3" > coap_cache_get_app_data.3
+ 	@echo ".so man3/coap_cache.3" > coap_cache_set_app_data.3
+ 	@echo ".so man3/coap_context.3" > coap_context_get_session_timeout.3
+-	@echo ".so man3/coap_context.3" > coap_context_set_csm_timeout.3
+-	@echo ".so man3/coap_context.3" > coap_context_get_csm_timeout.3
++	@echo ".so man3/coap_context.3" > coap_context_set_csm_timeout_ms.3
++	@echo ".so man3/coap_context.3" > coap_context_get_csm_timeout_ms.3
+ 	@echo ".so man3/coap_context.3" > coap_context_set_max_token_size.3
++	@echo ".so man3/coap_deprecated.3" > coap_option_setb.3
++	@echo ".so man3/coap_deprecated.3" > coap_read.3
+ 	@echo ".so man3/coap_deprecated.3" > coap_register_handler.3
+ 	@echo ".so man3/coap_deprecated.3" > coap_resource_set_dirty.3
+ 	@echo ".so man3/coap_deprecated.3" > coap_run_once.3
+diff --git a/man/coap_context.txt.in b/man/coap_context.txt.in
+index e90c107b..7b7842f8 100644
+--- a/man/coap_context.txt.in
++++ b/man/coap_context.txt.in
+@@ -19,8 +19,8 @@ coap_context_set_max_handshake_sessions,
+ coap_context_get_max_handshake_sessions,
+ coap_context_set_session_timeout,
+ coap_context_get_session_timeout,
+-coap_context_set_csm_timeout,
+-coap_context_get_csm_timeout,
++coap_context_set_csm_timeout_ms,
++coap_context_get_csm_timeout_ms,
+ coap_context_set_max_token_size
+ - Work with CoAP contexts
+ 
+@@ -50,10 +50,10 @@ unsigned int _session_timeout_);*
+ *unsigned int coap_context_get_session_timeout(
+ const coap_context_t *_context_);*
+ 
+-*void coap_context_set_csm_timeout(coap_context_t *_context_,
+-unsigned int _csm_timeout_);*
++*void coap_context_set_csm_timeout_ms(coap_context_t *_context_,
++unsigned int _csm_timeout_ms_);*
+ 
+-*unsigned int coap_context_get_csm_timeout(const coap_context_t *_context_);*
++*unsigned int coap_context_get_csm_timeout_ms(const coap_context_t *_context_);*
+ 
+ *void coap_context_set_max_token_size(coap_context_t *_context_,
+ size_t _max_token_size_);*
+@@ -132,16 +132,19 @@ removed. 0 (the default) means wait for the default of 300 seconds.
+ The *coap_context_get_session_timeout*() function returns the seconds to wait
+ before timing out an idle server session for _context_.
+ 
+-*Function: coap_context_set_csm_timeout()*
++*Function: coap_context_set_csm_timeout_ms()*
+ 
+-The *coap_context_set_csm_timeout*() function sets the number of seconds to
+-wait for a (TCP) CSM negotiation response from the peer to _csm_timeout_ for
+-_context_.  0 (the default) means wait forever.
++The *coap_context_set_csm_timeout_ms*() function sets the number of milliseconds
++to wait for a (TCP) CSM negotiation response from the peer to _csm_timeout_ms_
++for _context_ before timing out and assuming CoAP server is 'broken'. The
++default is 1000 milliseconds. The minimum value for _csm_timeout_ms_ is set to
++10 milliseconds and the maximum value for _csm_timeout_ms_ is set to 10000
++milliseconds.
+ 
+-*Function: coap_context_get_csm_timeout()*
++*Function: coap_context_get_csm_timeout_ms()*
+ 
+-The *coap_context_get_csm_timeout*() function returns the seconds to wait for
+-a (TCP) CSM negotiation response from the peer for _context_,
++The *coap_context_get_csm_timeout_ms*() function returns the milliseconds to wait
++for a (TCP) CSM negotiation response from the peer for _context_,
+ 
+ *Function: coap_context_set_max_token_size()*
+ 
+@@ -169,8 +172,8 @@ outstanding server sessions in (D)TLS handshake.
+ *coap_context_get_session_timeout*() returns the seconds to wait before timing
+ out an idle server session.
+ 
+-*coap_context_get_csm_timeout*() returns the seconds to wait for a (TCP) CSM
+-negotiation response from the peer.
++*coap_context_get_csm_timeout_ms*() returns the milliseconds to wait for a
++(TCP) CSM negotiation response from the peer.
+ 
+ SEE ALSO
+ --------
+diff --git a/man/coap_deprecated.txt.in b/man/coap_deprecated.txt.in
+index 40833a91..4dc88145 100644
+--- a/man/coap_deprecated.txt.in
++++ b/man/coap_deprecated.txt.in
+@@ -12,6 +12,8 @@ NAME
+ ----
+ coap_deprecated,
+ coap_clear_event_handler,
++coap_context_get_csm_timeout,
++coap_context_set_csm_timeout,
+ coap_context_set_psk,
+ coap_encode_var_bytes,
+ coap_new_client_session_psk,
+@@ -32,6 +34,11 @@ SYNOPSIS
+ 
+ *void coap_clear_event_handler(coap_context_t *_context_);*
+ 
++*unsigned int coap_context_get_csm_timeout(const coap_context_t *_context_);*
++
++*void coap_context_set_csm_timeout(coap_context_t *_context_,
++unsigned int _csm_timeout_);*
++
+ *int coap_context_set_psk(coap_context_t *_context_, const char *_hint_,
+ const uint8_t *_key_, size_t _key_len_);*
+ 
+@@ -84,6 +91,17 @@ FUNCTIONS
+ The *coap_clear_event_handler*() function is replaced by
+ *coap_register_event_handler*(3), using NULL for _handler_.
+ 
++*Function: coap_context_get_csm_timeout()*
++
++The *coap_context_get_csm_timeout*() function returns the seconds to wait for
++a (TCP) CSM negotiation response from the peer for _context_,
++
++*Function: coap_context_set_csm_timeout()*
++
++The *coap_context_set_csm_timeout*() function sets the number of seconds to
++wait for a (TCP) CSM negotiation response from the peer to _csm_timeout_ for
++_context_.  The default is 30 secionds.  0 (the default) means wait forever.
++
+ *Function: coap_context_set_psk()*
+ 
+ The *coap_context_set_psk*() function is replaced by
+@@ -148,6 +166,9 @@ The *coap_write*() function is replaced by
+ 
+ RETURN VALUES
+ -------------
++*coap_context_get_csm_timeout*() returns the seconds to wait for a (TCP) CSM
++negotiation response from the peer.
++
+ *coap_context_set_psk*() returns 1 if success, 0 on failure.
+ 
+ *coap_encode_var_bytes*() returns either the length of bytes encoded (which can
+diff --git a/src/coap_io.c b/src/coap_io.c
+index ad973850..4c6340dc 100644
+--- a/src/coap_io.c
++++ b/src/coap_io.c
+@@ -1448,18 +1448,17 @@ release_1:
+ 
+ #if !COAP_DISABLE_TCP
+     if (s->type == COAP_SESSION_TYPE_CLIENT && COAP_PROTO_RELIABLE(s->proto) &&
+-        s->state == COAP_SESSION_STATE_CSM && ctx->csm_timeout > 0) {
++        s->state == COAP_SESSION_STATE_CSM && ctx->csm_timeout_ms > 0) {
+       if (s->csm_tx == 0) {
+         s->csm_tx = now;
+-      } else if (s->csm_tx + ctx->csm_timeout * COAP_TICKS_PER_SECOND <= now) {
+-        /* Make sure the session object is not deleted in the callback */
+-        coap_session_reference(s);
+-        coap_session_disconnected(s, COAP_NACK_NOT_DELIVERABLE);
+-        coap_session_release(s);
+-        continue;
++        s_timeout = (ctx->csm_timeout_ms * COAP_TICKS_PER_SECOND) / 1000;
++      } else if (s->csm_tx + (ctx->csm_timeout_ms * COAP_TICKS_PER_SECOND) / 1000 <= now) {
++        /* timed out */
++        s_timeout = 0;
++      } else {
++        s_timeout = (s->csm_tx + (ctx->csm_timeout_ms * COAP_TICKS_PER_SECOND) / 1000) - now;
+       }
+-      s_timeout = (s->csm_tx + ctx->csm_timeout * COAP_TICKS_PER_SECOND) - now;
+-      if (timeout == 0 || s_timeout < timeout)
++      if ((timeout == 0 || s_timeout < timeout) && s_timeout != 0)
+         timeout = s_timeout;
+     }
+ #endif /* !COAP_DISABLE_TCP */
+diff --git a/src/coap_net.c b/src/coap_net.c
+index 16bd9097..bbce240d 100644
+--- a/src/coap_net.c
++++ b/src/coap_net.c
+@@ -416,15 +416,34 @@ coap_context_get_max_handshake_sessions(const coap_context_t *context) {
+   return context->max_handshake_sessions;
+ }
+ 
++static unsigned int s_csm_timeout = 30;
++
+ void
+ coap_context_set_csm_timeout(coap_context_t *context,
+                              unsigned int csm_timeout) {
+-  context->csm_timeout = csm_timeout;
++  s_csm_timeout = csm_timeout;
++  coap_context_set_csm_timeout_ms(context, csm_timeout * 1000);
+ }
+ 
+ unsigned int
+ coap_context_get_csm_timeout(const coap_context_t *context) {
+-  return context->csm_timeout;
++  (void)context;
++  return s_csm_timeout;
++}
++
++void
++coap_context_set_csm_timeout_ms(coap_context_t *context,
++                                unsigned int csm_timeout_ms) {
++  if (csm_timeout_ms < 10)
++    csm_timeout_ms = 10;
++  if (csm_timeout_ms > 10000)
++    csm_timeout_ms = 10000;
++  context->csm_timeout_ms = csm_timeout_ms;
++}
++
++unsigned int
++coap_context_get_csm_timeout_ms(const coap_context_t *context) {
++  return context->csm_timeout_ms;
+ }
+ 
+ void
+@@ -527,7 +546,7 @@ coap_new_context(const coap_address_t *listen_addr) {
+   }
+ 
+   /* set default CSM values */
+-  c->csm_timeout = 30;
++  c->csm_timeout_ms = 1000;
+   c->csm_max_message_size = COAP_DEFAULT_MAX_PDU_RX_SIZE;
+ 
+ #if COAP_SERVER_SUPPORT
+@@ -985,6 +1004,7 @@ coap_client_delay_first(coap_session_t *session) {
+ #if COAP_CLIENT_SUPPORT
+   if (session->type == COAP_SESSION_TYPE_CLIENT && session->doing_first) {
+     int timeout_ms = 5000;
++    coap_session_state_t current_state = session->state;
+ 
+     if (session->delay_recursive) {
+       assert(0);
+@@ -1006,14 +1026,31 @@ coap_client_delay_first(coap_session_t *session) {
+         coap_session_release(session);
+         return 0;
+       }
+-      if (result <= timeout_ms) {
++
++      /* coap_io_process() may have updated session state */
++      if (session->state == COAP_SESSION_STATE_CSM &&
++          current_state != COAP_SESSION_STATE_CSM) {
++        /* Update timeout and restart the clock for CSM timeout */
++        current_state = COAP_SESSION_STATE_CSM;
++        timeout_ms = session->context->csm_timeout_ms;
++        result = 0;
++      }
++
++      if (result < timeout_ms) {
+         timeout_ms -= result;
+       } else {
+         if (session->doing_first == 1) {
+           /* Timeout failure of some sort with first request */
+-          coap_log_debug("** %s: timeout waiting for first response\n",
+-                         coap_session_str(session));
+           session->doing_first = 0;
++          if (session->state == COAP_SESSION_STATE_CSM) {
++            coap_log_debug("** %s: timeout waiting for CSM response\n",
++                           coap_session_str(session));
++            session->csm_not_seen = 1;
++            coap_session_connected(session);
++          } else {
++            coap_log_debug("** %s: timeout waiting for first response\n",
++                           coap_session_str(session));
++          }
+         }
+       }
+     }
+@@ -3429,6 +3466,17 @@ handle_signaling(coap_context_t *context, coap_session_t *session,
+   coap_option_iterator_init(pdu, &opt_iter, COAP_OPT_ALL);
+ 
+   if (pdu->code == COAP_SIGNALING_CODE_CSM) {
++    if (session->csm_not_seen) {
++      coap_tick_t now;
++
++      coap_ticks(&now);
++      /* CSM timeout before CSM seen */
++      coap_log_warn("***%s: CSM received after CSM timeout\n",
++                    coap_session_str(session));
++      coap_log_warn("***%s: Increase timeout in coap_context_set_csm_timeout_ms() to > %d\n",
++                    coap_session_str(session),
++                    (int)(((now - session->csm_tx) * 1000) / COAP_TICKS_PER_SECOND));
++    }
+     if (session->max_token_checked == COAP_EXT_T_NOT_CHECKED) {
+       session->max_token_size = COAP_TOKEN_DEFAULT_MAX;
+     }
+-- 
+2.34.1
+

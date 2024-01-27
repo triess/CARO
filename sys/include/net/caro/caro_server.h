@@ -11,10 +11,9 @@
 extern "C" {
 #endif
 
-#include "stdint.h"
-#include "stdbool.h"
-
-#include "net/gcoap.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 /* Declare the API of the module */
 
@@ -103,7 +102,7 @@ typedef struct caro_request_t {
     method_t method;
     transport_t transport;
 
-    coap_pkt_t* gcoap_req;
+    void* req_obj;
 
     struct server_driver_t* driver;
 } caro_request_t;
@@ -114,7 +113,7 @@ typedef struct response_t {
     bool opts_finished;
     size_t res_len;
 
-    coap_pkt_t* gcoap_res;
+    void* res_obj;
 
     struct server_driver_t* driver;
 } caro_response_t;
@@ -170,7 +169,7 @@ void caro_server_debug_receive_request(caro_server_t* server, char* path, method
 
 // DRIVER STUFF
 
-
-extern server_driver_t gcoap_driver;
+#include "net/caro/caro_server_gcoap.h"
+#include "net/caro/caro_server_libcoap.h"
 
 #endif //RIOT_CARO_SERVER_H
