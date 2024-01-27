@@ -42,6 +42,7 @@ else
 endif
 
 USEMODULE += gcoap
+USEMODULE += xtimer
 
 # Required by gcoap example
 USEMODULE += od
