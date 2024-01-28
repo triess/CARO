@@ -14,6 +14,7 @@ void _libcoap_start_server(struct server_driver_t* sd){
     coap_startup();
 }
 
+//TODO: should not be static
 static void resource_handler(coap_resource_t *resource, coap_session_t  *session,
              const coap_pdu_t *request, const coap_string_t *query,
              coap_pdu_t *response){
