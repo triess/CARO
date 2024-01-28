@@ -14,12 +14,30 @@ void _libcoap_start_server(struct server_driver_t* sd){
     coap_startup();
 }
 
+static void resource_handler(coap_resource_t *resource, coap_session_t  *session,
+             const coap_pdu_t *request, const coap_string_t *query,
+             coap_pdu_t *response){
+                (void) resource;
+                (void) session;
+                (void) request;
+                (void) query;
+                (void) response;
+             }
+             
 void _libcoap_register_resource(struct server_driver_t* sd, methods_selector_t ms, char* path, caro_resource_handler_t rh) {
     (void)sd;
-    (void)ms;
-    (void)path;
+    //(void)ms;
+    //(void)path;
     (void)rh;
+    coap_str_const_t *uri = coap_make_str_const(path);
     printf("libcoap register resource\n");
+    coap_resource_t * resource = coap_resource_init(uri, 0);
+
+
+    coap_register_request_handler(resource, ms, resource_handler);
+
+    coap_add_resource(coap_new_context(NULL), resource);
+    
 }
 
 void _libcoap_get_request_header_data(struct server_driver_t* sd, caro_request_t* request, const char** path_p, uint8_t* ver_t_tkl_p, uint16_t* id_p, method_t* m_p, transport_t* t_p, uint16_t* opt_len_p, uint16_t* pay_len_p){
